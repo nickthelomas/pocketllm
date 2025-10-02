@@ -1,0 +1,348 @@
+import { type User, type InsertUser, type Conversation, type InsertConversation, type Message, type InsertMessage, type RagDocument, type InsertRagDocument, type RagChunk, type InsertRagChunk, type Model, type InsertModel, type Settings, type InsertSettings, type McpServer, type InsertMcpServer } from "@shared/schema";
+import { randomUUID } from "crypto";
+
+export interface IStorage {
+  // Users
+  getUser(id: string): Promise<User | undefined>;
+  getUserByUsername(username: string): Promise<User | undefined>;
+  createUser(user: InsertUser): Promise<User>;
+
+  // Conversations
+  getConversations(userId?: string): Promise<Conversation[]>;
+  getConversation(id: string): Promise<Conversation | undefined>;
+  createConversation(conversation: InsertConversation): Promise<Conversation>;
+  updateConversation(id: string, updates: Partial<Conversation>): Promise<Conversation | undefined>;
+  deleteConversation(id: string): Promise<boolean>;
+
+  // Messages
+  getMessages(conversationId: string): Promise<Message[]>;
+  createMessage(message: InsertMessage): Promise<Message>;
+  deleteMessages(conversationId: string): Promise<boolean>;
+
+  // RAG Documents
+  getRagDocuments(): Promise<RagDocument[]>;
+  getRagDocument(id: string): Promise<RagDocument | undefined>;
+  createRagDocument(document: InsertRagDocument): Promise<RagDocument>;
+  deleteRagDocument(id: string): Promise<boolean>;
+
+  // RAG Chunks
+  getRagChunks(documentId: string): Promise<RagChunk[]>;
+  createRagChunk(chunk: InsertRagChunk): Promise<RagChunk>;
+  searchSimilarChunks(embedding: number[], topK: number, threshold: number): Promise<RagChunk[]>;
+  deleteRagChunks(documentId: string): Promise<boolean>;
+
+  // Models
+  getModels(): Promise<Model[]>;
+  getModel(name: string): Promise<Model | undefined>;
+  createModel(model: InsertModel): Promise<Model>;
+  updateModel(id: string, updates: Partial<Model>): Promise<Model | undefined>;
+  deleteModel(id: string): Promise<boolean>;
+
+  // Settings
+  getSettings(userId?: string): Promise<Settings[]>;
+  getSetting(userId: string | undefined, key: string): Promise<Settings | undefined>;
+  setSetting(setting: InsertSettings): Promise<Settings>;
+
+  // MCP Servers
+  getMcpServers(): Promise<McpServer[]>;
+  getMcpServer(id: string): Promise<McpServer | undefined>;
+  createMcpServer(server: InsertMcpServer): Promise<McpServer>;
+  updateMcpServer(id: string, updates: Partial<McpServer>): Promise<McpServer | undefined>;
+  deleteMcpServer(id: string): Promise<boolean>;
+}
+
+export class MemStorage implements IStorage {
+  private users: Map<string, User> = new Map();
+  private conversations: Map<string, Conversation> = new Map();
+  private messages: Map<string, Message> = new Map();
+  private ragDocuments: Map<string, RagDocument> = new Map();
+  private ragChunks: Map<string, RagChunk> = new Map();
+  private models: Map<string, Model> = new Map();
+  private settings: Map<string, Settings> = new Map();
+  private mcpServers: Map<string, McpServer> = new Map();
+
+  constructor() {
+    // Initialize with some default models
+    const defaultModels: InsertModel[] = [
+      { name: "llama3.2:3b-instruct", provider: "ollama", isAvailable: true, parameters: {} },
+      { name: "mistral:7b-instruct-v0.2", provider: "ollama", isAvailable: true, parameters: {} },
+      { name: "gpt-5", provider: "openai", isAvailable: false, parameters: {} },
+      { name: "claude-sonnet-4-20250514", provider: "anthropic", isAvailable: false, parameters: {} },
+    ];
+
+    defaultModels.forEach(model => {
+      const id = randomUUID();
+      const fullModel: Model = { ...model, id, createdAt: new Date() };
+      this.models.set(id, fullModel);
+    });
+  }
+
+  // Users
+  async getUser(id: string): Promise<User | undefined> {
+    return this.users.get(id);
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    return Array.from(this.users.values()).find(user => user.username === username);
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const id = randomUUID();
+    const user: User = { ...insertUser, id };
+    this.users.set(id, user);
+    return user;
+  }
+
+  // Conversations
+  async getConversations(userId?: string): Promise<Conversation[]> {
+    const allConversations = Array.from(this.conversations.values());
+    if (userId) {
+      return allConversations.filter(conv => conv.userId === userId);
+    }
+    return allConversations;
+  }
+
+  async getConversation(id: string): Promise<Conversation | undefined> {
+    return this.conversations.get(id);
+  }
+
+  async createConversation(insertConversation: InsertConversation): Promise<Conversation> {
+    const id = randomUUID();
+    const now = new Date();
+    const conversation: Conversation = {
+      ...insertConversation,
+      id,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.conversations.set(id, conversation);
+    return conversation;
+  }
+
+  async updateConversation(id: string, updates: Partial<Conversation>): Promise<Conversation | undefined> {
+    const conversation = this.conversations.get(id);
+    if (!conversation) return undefined;
+    
+    const updated: Conversation = { ...conversation, ...updates, updatedAt: new Date() };
+    this.conversations.set(id, updated);
+    return updated;
+  }
+
+  async deleteConversation(id: string): Promise<boolean> {
+    // Also delete all messages in this conversation
+    const messages = Array.from(this.messages.values()).filter(msg => msg.conversationId === id);
+    messages.forEach(msg => this.messages.delete(msg.id));
+    
+    return this.conversations.delete(id);
+  }
+
+  // Messages
+  async getMessages(conversationId: string): Promise<Message[]> {
+    return Array.from(this.messages.values())
+      .filter(msg => msg.conversationId === conversationId)
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  }
+
+  async createMessage(insertMessage: InsertMessage): Promise<Message> {
+    const id = randomUUID();
+    const message: Message = {
+      ...insertMessage,
+      id,
+      createdAt: new Date(),
+    };
+    this.messages.set(id, message);
+    return message;
+  }
+
+  async deleteMessages(conversationId: string): Promise<boolean> {
+    const messages = Array.from(this.messages.values()).filter(msg => msg.conversationId === conversationId);
+    messages.forEach(msg => this.messages.delete(msg.id));
+    return true;
+  }
+
+  // RAG Documents
+  async getRagDocuments(): Promise<RagDocument[]> {
+    return Array.from(this.ragDocuments.values()).sort((a, b) => b.uploadedAt.getTime() - a.uploadedAt.getTime());
+  }
+
+  async getRagDocument(id: string): Promise<RagDocument | undefined> {
+    return this.ragDocuments.get(id);
+  }
+
+  async createRagDocument(insertDocument: InsertRagDocument): Promise<RagDocument> {
+    const id = randomUUID();
+    const document: RagDocument = {
+      ...insertDocument,
+      id,
+      uploadedAt: new Date(),
+    };
+    this.ragDocuments.set(id, document);
+    return document;
+  }
+
+  async deleteRagDocument(id: string): Promise<boolean> {
+    // Also delete all chunks for this document
+    await this.deleteRagChunks(id);
+    return this.ragDocuments.delete(id);
+  }
+
+  // RAG Chunks
+  async getRagChunks(documentId: string): Promise<RagChunk[]> {
+    return Array.from(this.ragChunks.values())
+      .filter(chunk => chunk.documentId === documentId)
+      .sort((a, b) => a.chunkIndex - b.chunkIndex);
+  }
+
+  async createRagChunk(insertChunk: InsertRagChunk): Promise<RagChunk> {
+    const id = randomUUID();
+    const chunk: RagChunk = {
+      ...insertChunk,
+      id,
+      createdAt: new Date(),
+    };
+    this.ragChunks.set(id, chunk);
+    return chunk;
+  }
+
+  async searchSimilarChunks(embedding: number[], topK: number, threshold: number): Promise<RagChunk[]> {
+    const chunks = Array.from(this.ragChunks.values()).filter(chunk => chunk.embedding);
+    
+    const similarities = chunks.map(chunk => {
+      const chunkEmbedding = chunk.embedding as number[];
+      const similarity = this.cosineSimilarity(embedding, chunkEmbedding);
+      return { chunk, similarity };
+    }).filter(({ similarity }) => similarity >= threshold);
+
+    similarities.sort((a, b) => b.similarity - a.similarity);
+    return similarities.slice(0, topK).map(({ chunk }) => chunk);
+  }
+
+  private cosineSimilarity(a: number[], b: number[]): number {
+    if (a.length !== b.length) return 0;
+    
+    let dotProduct = 0;
+    let normA = 0;
+    let normB = 0;
+    
+    for (let i = 0; i < a.length; i++) {
+      dotProduct += a[i] * b[i];
+      normA += a[i] * a[i];
+      normB += b[i] * b[i];
+    }
+    
+    return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+  }
+
+  async deleteRagChunks(documentId: string): Promise<boolean> {
+    const chunks = Array.from(this.ragChunks.values()).filter(chunk => chunk.documentId === documentId);
+    chunks.forEach(chunk => this.ragChunks.delete(chunk.id));
+    return true;
+  }
+
+  // Models
+  async getModels(): Promise<Model[]> {
+    return Array.from(this.models.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  async getModel(name: string): Promise<Model | undefined> {
+    return Array.from(this.models.values()).find(model => model.name === name);
+  }
+
+  async createModel(insertModel: InsertModel): Promise<Model> {
+    const id = randomUUID();
+    const model: Model = {
+      ...insertModel,
+      id,
+      createdAt: new Date(),
+    };
+    this.models.set(id, model);
+    return model;
+  }
+
+  async updateModel(id: string, updates: Partial<Model>): Promise<Model | undefined> {
+    const model = this.models.get(id);
+    if (!model) return undefined;
+    
+    const updated: Model = { ...model, ...updates };
+    this.models.set(id, updated);
+    return updated;
+  }
+
+  async deleteModel(id: string): Promise<boolean> {
+    return this.models.delete(id);
+  }
+
+  // Settings
+  async getSettings(userId?: string): Promise<Settings[]> {
+    const allSettings = Array.from(this.settings.values());
+    if (userId) {
+      return allSettings.filter(setting => setting.userId === userId);
+    }
+    return allSettings;
+  }
+
+  async getSetting(userId: string | undefined, key: string): Promise<Settings | undefined> {
+    return Array.from(this.settings.values()).find(setting => 
+      setting.userId === userId && setting.key === key
+    );
+  }
+
+  async setSetting(insertSetting: InsertSettings): Promise<Settings> {
+    // Check if setting already exists
+    const existing = await this.getSetting(insertSetting.userId, insertSetting.key);
+    
+    if (existing) {
+      const updated: Settings = {
+        ...existing,
+        value: insertSetting.value,
+        updatedAt: new Date(),
+      };
+      this.settings.set(existing.id, updated);
+      return updated;
+    } else {
+      const id = randomUUID();
+      const setting: Settings = {
+        ...insertSetting,
+        id,
+        updatedAt: new Date(),
+      };
+      this.settings.set(id, setting);
+      return setting;
+    }
+  }
+
+  // MCP Servers
+  async getMcpServers(): Promise<McpServer[]> {
+    return Array.from(this.mcpServers.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  async getMcpServer(id: string): Promise<McpServer | undefined> {
+    return this.mcpServers.get(id);
+  }
+
+  async createMcpServer(insertServer: InsertMcpServer): Promise<McpServer> {
+    const id = randomUUID();
+    const server: McpServer = {
+      ...insertServer,
+      id,
+      createdAt: new Date(),
+    };
+    this.mcpServers.set(id, server);
+    return server;
+  }
+
+  async updateMcpServer(id: string, updates: Partial<McpServer>): Promise<McpServer | undefined> {
+    const server = this.mcpServers.get(id);
+    if (!server) return undefined;
+    
+    const updated: McpServer = { ...server, ...updates };
+    this.mcpServers.set(id, updated);
+    return updated;
+  }
+
+  async deleteMcpServer(id: string): Promise<boolean> {
+    return this.mcpServers.delete(id);
+  }
+}
+
+export const storage = new MemStorage();
