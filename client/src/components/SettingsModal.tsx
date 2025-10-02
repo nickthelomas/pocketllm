@@ -13,6 +13,7 @@ import { Trash2, Plus, Settings2, User, Zap, Database, Cog } from "lucide-react"
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import type { Settings as SettingsType, McpServer } from "@shared/schema";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -40,12 +41,12 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   const { toast } = useToast();
 
-  const { data: storedSettings } = useQuery({
+  const { data: storedSettings } = useQuery<SettingsType[]>({
     queryKey: ["/api/settings"],
     enabled: isOpen,
   });
 
-  const { data: mcpServers = [] } = useQuery({
+  const { data: mcpServers = [] } = useQuery<McpServer[]>({
     queryKey: ["/api/mcp/servers"],
     enabled: isOpen,
   });
@@ -229,7 +230,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   type="number"
                   placeholder="Random"
                   value={settings.seed || ""}
-                  onChange={(e) => setSettings(prev => ({ ...prev, seed: e.target.value ? parseInt(e.target.value) : null }))}
+                  onChange={(e) => setSettings(prev => ({ ...prev, seed: e.target.value ? parseInt(e.target.value) as any : null }))}
                   className="mt-2"
                   data-testid="input-seed"
                 />

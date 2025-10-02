@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Settings, Play } from "lucide-react";
+import type { McpServer } from "@shared/schema";
 
 interface MCPToolsDialogProps {
   open: boolean;
@@ -10,7 +11,7 @@ interface MCPToolsDialogProps {
 }
 
 export default function MCPToolsDialog({ open, onOpenChange }: MCPToolsDialogProps) {
-  const { data: mcpServers = [], isLoading } = useQuery({
+  const { data: mcpServers = [], isLoading } = useQuery<McpServer[]>({
     queryKey: ["/api/mcp/servers"],
     enabled: open,
   });

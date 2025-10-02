@@ -79,11 +79,11 @@ export class StreamingClient {
         }
       }
     } catch (error) {
-      if (error.name === "AbortError") {
+      if ((error as any).name === "AbortError") {
         console.log("Streaming aborted");
       } else {
         console.error("Streaming error:", error);
-        options.onError?.(error.message);
+        options.onError?.(error instanceof Error ? error.message : String(error));
       }
     }
   }

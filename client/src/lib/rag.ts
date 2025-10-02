@@ -54,7 +54,7 @@ export class RAGClient {
       const result = await response.json();
       return { success: true, documentId: result.id };
     } catch (error) {
-      return { success: false, error: error.message };
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
 
@@ -71,7 +71,7 @@ export class RAGClient {
 
       return { success: true };
     } catch (error) {
-      return { success: false, error: error.message };
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
 }

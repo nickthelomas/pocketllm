@@ -12,7 +12,7 @@ export default function RAGPanel() {
   const [isDragging, setIsDragging] = useState(false);
   const { toast } = useToast();
 
-  const { data: documents = [], isLoading } = useQuery({
+  const { data: documents = [], isLoading } = useQuery<RagDocument[]>({
     queryKey: ["/api/rag/documents"],
   });
 
@@ -201,7 +201,7 @@ export default function RAGPanel() {
           </div>
         ) : (
           <div className="space-y-3">
-            {documents.map((document: RagDocument) => (
+            {documents.map((document) => (
               <div
                 key={document.id}
                 className="bg-background/50 border border-border rounded-lg p-3 hover:bg-muted/10 transition-colors group"

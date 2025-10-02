@@ -13,6 +13,7 @@ import {
   Upload,
   Lightbulb
 } from "lucide-react";
+import type { RagDocument } from "@shared/schema";
 
 export default function Chat() {
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
@@ -26,7 +27,7 @@ export default function Chat() {
   });
 
   // RAG documents count
-  const { data: ragDocuments } = useQuery({
+  const { data: ragDocuments = [] } = useQuery<RagDocument[]>({
     queryKey: ["/api/rag/documents"],
   });
 

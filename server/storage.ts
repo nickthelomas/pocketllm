@@ -23,6 +23,7 @@ export interface IStorage {
   getRagDocuments(): Promise<RagDocument[]>;
   getRagDocument(id: string): Promise<RagDocument | undefined>;
   createRagDocument(document: InsertRagDocument): Promise<RagDocument>;
+  updateRagDocument(id: string, updates: Partial<RagDocument>): Promise<RagDocument | undefined>;
   deleteRagDocument(id: string): Promise<boolean>;
 
   // RAG Chunks
@@ -62,17 +63,15 @@ export class MemStorage implements IStorage {
   private mcpServers: Map<string, McpServer> = new Map();
 
   constructor() {
-    // Initialize with some default models
+    // Initialize with some default local models
     const defaultModels: InsertModel[] = [
-      { name: "llama3.2:3b-instruct", provider: "ollama", isAvailable: true, parameters: {} },
-      { name: "mistral:7b-instruct-v0.2", provider: "ollama", isAvailable: true, parameters: {} },
-      { name: "gpt-5", provider: "openai", isAvailable: false, parameters: {} },
-      { name: "claude-sonnet-4-20250514", provider: "anthropic", isAvailable: false, parameters: {} },
+      { name: "llama3.2:3b-instruct", provider: "ollama", isAvailable: true, parameters: null },
+      { name: "mistral:7b-instruct-v0.2", provider: "ollama", isAvailable: true, parameters: null },
     ];
 
     defaultModels.forEach(model => {
       const id = randomUUID();
-      const fullModel: Model = { ...model, id, createdAt: new Date() };
+      const fullModel: Model = { ...model, id, createdAt: new Date(), isAvailable: model.isAvailable ?? null, parameters: model.parameters ?? null };
       this.models.set(id, fullModel);
     });
   }
@@ -111,6 +110,7 @@ export class MemStorage implements IStorage {
     const now = new Date();
     const conversation: Conversation = {
       ...insertConversation,
+      userId: insertConversation.userId ?? null,
       id,
       createdAt: now,
       updatedAt: now,
@@ -147,6 +147,8 @@ export class MemStorage implements IStorage {
     const id = randomUUID();
     const message: Message = {
       ...insertMessage,
+      model: insertMessage.model ?? null,
+      citations: insertMessage.citations ?? null,
       id,
       createdAt: new Date(),
     };
@@ -180,6 +182,15 @@ export class MemStorage implements IStorage {
     return document;
   }
 
+  async updateRagDocument(id: string, updates: Partial<RagDocument>): Promise<RagDocument | undefined> {
+    const document = this.ragDocuments.get(id);
+    if (!document) return undefined;
+    
+    const updated: RagDocument = { ...document, ...updates };
+    this.ragDocuments.set(id, updated);
+    return updated;
+  }
+
   async deleteRagDocument(id: string): Promise<boolean> {
     // Also delete all chunks for this document
     await this.deleteRagChunks(id);
@@ -197,6 +208,7 @@ export class MemStorage implements IStorage {
     const id = randomUUID();
     const chunk: RagChunk = {
       ...insertChunk,
+      embedding: insertChunk.embedding ?? null,
       id,
       createdAt: new Date(),
     };
@@ -252,6 +264,8 @@ export class MemStorage implements IStorage {
     const id = randomUUID();
     const model: Model = {
       ...insertModel,
+      isAvailable: insertModel.isAvailable ?? null,
+      parameters: insertModel.parameters ?? null,
       id,
       createdAt: new Date(),
     };
@@ -281,9 +295,10 @@ export class MemStorage implements IStorage {
     return allSettings;
   }
 
-  async getSetting(userId: string | undefined, key: string): Promise<Settings | undefined> {
+  async getSetting(userId: string | null | undefined, key: string): Promise<Settings | undefined> {
+    const normalizedUserId = userId === undefined ? null : userId;
     return Array.from(this.settings.values()).find(setting => 
-      setting.userId === userId && setting.key === key
+      setting.userId === normalizedUserId && setting.key === key
     );
   }
 
@@ -303,6 +318,7 @@ export class MemStorage implements IStorage {
       const id = randomUUID();
       const setting: Settings = {
         ...insertSetting,
+        userId: insertSetting.userId ?? null,
         id,
         updatedAt: new Date(),
       };
@@ -324,6 +340,9 @@ export class MemStorage implements IStorage {
     const id = randomUUID();
     const server: McpServer = {
       ...insertServer,
+      description: insertServer.description ?? null,
+      tools: insertServer.tools ?? null,
+      isActive: insertServer.isActive ?? null,
       id,
       createdAt: new Date(),
     };

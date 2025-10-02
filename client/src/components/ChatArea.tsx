@@ -4,8 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Send, Paperclip, Square, RotateCcw, Settings } from "lucide-react";
-import MessageBubble from "./MessageBubble";
-import MCPToolsDialog from "./MCPToolsDialog";
+import MessageBubble from "@/components/MessageBubble";
+import MCPToolsDialog from "@/components/MCPToolsDialog";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -25,12 +25,12 @@ export default function ChatArea({ conversationId, selectedModel, onConversation
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
-  const { data: messages = [], isLoading } = useQuery({
+  const { data: messages = [], isLoading } = useQuery<Message[]>({
     queryKey: ["/api/conversations", conversationId, "messages"],
     enabled: !!conversationId,
   });
 
-  const { data: conversation } = useQuery({
+  const { data: conversation } = useQuery<{ title: string }>({
     queryKey: ["/api/conversations", conversationId],
     enabled: !!conversationId,
   });
@@ -45,7 +45,7 @@ export default function ChatArea({ conversationId, selectedModel, onConversation
 
   const clearChatMutation = useMutation({
     mutationFn: async () => {
-      if (!conversationId) return;
+      if (!conversationId) throw new Error("No conversation selected");
       return apiRequest("DELETE", `/api/conversations/${conversationId}/messages`);
     },
     onSuccess: () => {
@@ -59,10 +59,10 @@ export default function ChatArea({ conversationId, selectedModel, onConversation
   const sendMessage = async () => {
     if (!message.trim() || isStreaming) return;
 
-    let currentConversationId = conversationId;
+    let currentConversationId: string = conversationId || "";
 
     // Create conversation if none exists
-    if (!currentConversationId) {
+    if (!conversationId) {
       try {
         const response = await apiRequest("POST", "/api/conversations", {
           title: message.slice(0, 50) + (message.length > 50 ? "..." : ""),
@@ -75,11 +75,13 @@ export default function ChatArea({ conversationId, selectedModel, onConversation
       } catch (error) {
         toast({
           title: "Failed to create conversation",
-          description: error.message,
+          description: error instanceof Error ? error.message : String(error),
           variant: "destructive",
         });
         return;
       }
+    } else {
+      currentConversationId = conversationId;
     }
 
     const userMessage = message;
@@ -150,7 +152,7 @@ export default function ChatArea({ conversationId, selectedModel, onConversation
       setStreamingMessage("");
       toast({
         title: "Failed to send message",
-        description: error.message,
+        description: error instanceof Error ? error.message : String(error),
         variant: "destructive",
       });
     }
@@ -247,7 +249,7 @@ export default function ChatArea({ conversationId, selectedModel, onConversation
             </div>
           ) : (
             <>
-              {messages.map((msg: Message) => (
+              {messages.map((msg) => (
                 <MessageBubble key={msg.id} message={msg} />
               ))}
               

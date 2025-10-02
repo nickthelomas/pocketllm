@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertConversationSchema, insertMessageSchema, insertRagDocumentSchema, insertModelSchema, insertSettingsSchema, insertMcpServerSchema } from "@shared/schema";
@@ -33,7 +33,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const conversation = await storage.createConversation(data);
       res.json(conversation);
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
     }
   });
 
@@ -47,7 +47,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       res.json(conversation);
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
     }
   });
 
@@ -61,6 +61,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to delete conversation" });
+    }
+  });
+
+  app.delete("/api/conversations/:id/messages", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const success = await storage.deleteMessages(id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete messages" });
     }
   });
 
@@ -82,7 +92,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const message = await storage.createMessage(data);
       res.json(message);
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
     }
   });
 
@@ -113,8 +123,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (userProfile) {
         systemPrompt += `User Profile:\n${userProfile.value}\n\n`;
       }
-      if (ragSources && ragSources.length > 0) {
-        systemPrompt += "Relevant context:\n" + ragSources.map(source => source.content).join("\n\n") + "\n\n";
+      if (ragSources && Array.isArray(ragSources) && ragSources.length > 0) {
+        systemPrompt += "Relevant context:\n" + ragSources.map((source: any) => source.content).join("\n\n") + "\n\n";
       }
 
       // Simulate streaming response (in real implementation, this would connect to actual LLM APIs)
@@ -147,7 +157,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.end();
     } catch (error) {
       console.error("Streaming error:", error);
-      res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+      res.write(`data: ${JSON.stringify({ error: error instanceof Error ? error.message : String(error) })}\n\n`);
       res.end();
     }
   });
@@ -168,7 +178,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const model = await storage.createModel(data);
       res.json(model);
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
     }
   });
 
@@ -182,7 +192,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       res.json(model);
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
     }
   });
 
@@ -196,7 +206,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/rag/upload", upload.single("file"), async (req, res) => {
+  app.post("/api/rag/upload", upload.single("file"), async (req: Request, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: "No file uploaded" });
@@ -288,7 +298,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const setting = await storage.setSetting(data);
       res.json(setting);
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
     }
   });
 
@@ -308,7 +318,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const server = await storage.createMcpServer(data);
       res.json(server);
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
     }
   });
 
@@ -350,7 +360,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/import", upload.single("file"), async (req, res) => {
+  app.post("/api/import", upload.single("file"), async (req: Request, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: "No file uploaded" });

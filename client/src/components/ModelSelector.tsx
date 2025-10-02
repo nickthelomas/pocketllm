@@ -5,6 +5,7 @@ import { Download, List } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import type { Model } from "@shared/schema";
 
 interface ModelSelectorProps {
   selectedModel: string;
@@ -14,7 +15,7 @@ interface ModelSelectorProps {
 export default function ModelSelector({ selectedModel, onModelChange }: ModelSelectorProps) {
   const { toast } = useToast();
 
-  const { data: models = [] } = useQuery({
+  const { data: models = [] } = useQuery<Model[]>({
     queryKey: ["/api/models"],
   });
 

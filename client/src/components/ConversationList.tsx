@@ -14,7 +14,7 @@ interface ConversationListProps {
 export default function ConversationList({ selectedConversationId, onSelectConversation }: ConversationListProps) {
   const { toast } = useToast();
 
-  const { data: conversations = [], isLoading } = useQuery({
+  const { data: conversations = [], isLoading } = useQuery<Conversation[]>({
     queryKey: ["/api/conversations"],
   });
 
@@ -25,9 +25,9 @@ export default function ConversationList({ selectedConversationId, onSelectConve
         userId: null,
       });
     },
-    onSuccess: (response) => {
+    onSuccess: async (response) => {
       queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
-      const newConv = response.json();
+      const newConv = await response.json();
       onSelectConversation(newConv.id);
     },
     onError: (error) => {
@@ -130,7 +130,7 @@ export default function ConversationList({ selectedConversationId, onSelectConve
           </div>
 
           <div className="space-y-2">
-            {conversations.map((conversation: Conversation) => (
+            {conversations.map((conversation) => (
               <div
                 key={conversation.id}
                 className={`group cursor-pointer rounded-lg p-3 transition-colors ${
@@ -148,7 +148,7 @@ export default function ConversationList({ selectedConversationId, onSelectConve
                     </h3>
                     <div className="flex items-center gap-2 mt-2">
                       <span className={`text-xs ${selectedConversationId === conversation.id ? 'text-primary' : 'text-muted-foreground'}`}>
-                        {formatDate(conversation.updatedAt)}
+                        {formatDate(conversation.updatedAt.toString())}
                       </span>
                     </div>
                   </div>

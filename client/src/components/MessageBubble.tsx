@@ -50,9 +50,9 @@ export default function MessageBubble({ message, isStreaming = false }: MessageB
               </div>
               
               {/* Citations */}
-              {message.citations && Array.isArray(message.citations) && message.citations.length > 0 && (
+              {message.citations && Array.isArray(message.citations) && (message.citations as any[]).length > 0 && (
                 <div className="mt-3 space-y-2">
-                  {message.citations.map((citation: any, index: number) => (
+                  {(message.citations as any[]).map((citation: any, index: number) => (
                     <div
                       key={index}
                       className="p-3 bg-primary/5 border border-primary/30 rounded-lg"
@@ -64,10 +64,10 @@ export default function MessageBubble({ message, isStreaming = false }: MessageB
                         </svg>
                         <div className="flex-1">
                           <div className="text-xs font-medium text-primary mb-1">
-                            Source: {citation.source}
+                            Source: {String(citation.source || "Unknown")}
                           </div>
                           <p className="text-xs text-muted-foreground italic">
-                            "{citation.content}"
+                            "{String(citation.content || "")}"
                           </p>
                         </div>
                       </div>
