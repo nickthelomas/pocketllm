@@ -51,12 +51,12 @@ export const ragChunks = pgTable("rag_chunks", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-// Models table
+// Models table - STRICTLY LOCAL ONLY (no cloud providers)
 export const models = pgTable("models", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull().unique(),
-  provider: text("provider").notNull(), // "ollama", "openai", "anthropic"
-  isAvailable: boolean("is_available").default(false),
+  provider: text("provider").notNull(), // "ollama" or "local-file" ONLY
+  isAvailable: boolean("is_available").default(true).notNull(),
   parameters: jsonb("parameters"), // Default parameters for this model
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -111,6 +111,9 @@ export const insertRagChunkSchema = createInsertSchema(ragChunks).omit({
 export const insertModelSchema = createInsertSchema(models).omit({
   id: true,
   createdAt: true,
+}).extend({
+  provider: z.enum(["ollama", "local-file"]), // Enforce local-only providers
+  isAvailable: z.boolean().default(true),
 });
 
 export const insertSettingsSchema = createInsertSchema(settings).omit({

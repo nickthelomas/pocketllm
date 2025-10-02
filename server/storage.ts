@@ -63,15 +63,16 @@ export class MemStorage implements IStorage {
   private mcpServers: Map<string, McpServer> = new Map();
 
   constructor() {
-    // Initialize with some default local models
+    // Initialize with default local-only models (Ollama)
     const defaultModels: InsertModel[] = [
       { name: "llama3.2:3b-instruct", provider: "ollama", isAvailable: true, parameters: null },
       { name: "mistral:7b-instruct-v0.2", provider: "ollama", isAvailable: true, parameters: null },
+      { name: "qwen2.5:7b-instruct", provider: "ollama", isAvailable: true, parameters: null },
     ];
 
     defaultModels.forEach(model => {
       const id = randomUUID();
-      const fullModel: Model = { ...model, id, createdAt: new Date(), isAvailable: model.isAvailable ?? null, parameters: model.parameters ?? null };
+      const fullModel: Model = { ...model, id, createdAt: new Date(), isAvailable: model.isAvailable, parameters: model.parameters ?? null };
       this.models.set(id, fullModel);
     });
   }
@@ -264,7 +265,7 @@ export class MemStorage implements IStorage {
     const id = randomUUID();
     const model: Model = {
       ...insertModel,
-      isAvailable: insertModel.isAvailable ?? null,
+      isAvailable: insertModel.isAvailable,
       parameters: insertModel.parameters ?? null,
       id,
       createdAt: new Date(),

@@ -4,6 +4,8 @@ import { storage } from "./storage";
 import { insertConversationSchema, insertMessageSchema, insertRagDocumentSchema, insertModelSchema, insertSettingsSchema, insertMcpServerSchema } from "@shared/schema";
 import multer from "multer";
 import { z } from "zod";
+import { ollamaService } from "./services/ollama";
+import { modelDirectoryScanner } from "./services/modelDirectory";
 
 // File upload configuration
 const upload = multer({ 
@@ -96,7 +98,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Streaming chat endpoint
+  // Streaming chat endpoint - LOCAL ONLY using Ollama
   app.post("/api/chat/stream", async (req, res) => {
     try {
       const { message, conversationId, model, context, ragSources, settings } = req.body;
@@ -117,31 +119,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
         content: message,
       });
 
-      // Build system prompt with user profile
+      // Build system prompt with user profile and RAG context
       const userProfile = await storage.getSetting(undefined, "userProfile");
       let systemPrompt = "";
       if (userProfile) {
         systemPrompt += `User Profile:\n${userProfile.value}\n\n`;
       }
       if (ragSources && Array.isArray(ragSources) && ragSources.length > 0) {
-        systemPrompt += "Relevant context:\n" + ragSources.map((source: any) => source.content).join("\n\n") + "\n\n";
+        systemPrompt += "Relevant context from documents:\n" + ragSources.map((source: any) => source.content).join("\n\n") + "\n\n";
       }
 
-      // Simulate streaming response (in real implementation, this would connect to actual LLM APIs)
-      const response = "I'll help you implement RAG with local embeddings. Here's a comprehensive approach:\n\n**1. Document Processing Pipeline:**\n- Upload documents through your UI (PDF, DOCX, TXT, CSV, JSON)\n- Parse and extract text content\n- Split documents into manageable chunks (typically 500-1000 tokens)\n- Generate embeddings using a local model like all-MiniLM-L6-v2\n\n**2. Vector Storage:**\n- Store embeddings in SQLite with vector extension or Chroma\n- Index documents with metadata (filename, page, timestamp)\n- Implement similarity search using cosine similarity";
-
-      // Stream the response token by token
-      const tokens = response.split(' ');
+      // Stream response from Ollama
       let fullResponse = "";
+      const modelName = model || "llama3.2:3b-instruct";
       
-      for (let i = 0; i < tokens.length; i++) {
-        const token = tokens[i] + (i < tokens.length - 1 ? ' ' : '');
-        fullResponse += token;
-        
-        res.write(`data: ${JSON.stringify({ token, fullResponse })}\n\n`);
-        
-        // Simulate processing delay
-        await new Promise(resolve => setTimeout(resolve, 50));
+      try {
+        for await (const chunk of ollamaService.generateStream({
+          model: modelName,
+          prompt: message,
+          system: systemPrompt || undefined,
+          temperature: settings?.temperature ?? 0.7,
+          top_p: settings?.topP ?? 0.9,
+          top_k: settings?.topK ?? 40,
+          num_predict: settings?.maxTokens ?? 2000,
+          seed: settings?.seed ?? undefined,
+          context: context ?? undefined,
+        })) {
+          const token = chunk.response;
+          fullResponse += token;
+          
+          res.write(`data: ${JSON.stringify({ token, fullResponse })}\n\n`);
+        }
+      } catch (ollamaError) {
+        console.error("Ollama error:", ollamaError);
+        res.write(`data: ${JSON.stringify({ error: "Ollama service unavailable. Please ensure Ollama is running on port 11434." })}\n\n`);
+        res.end();
+        return;
       }
 
       // Save assistant message
@@ -149,7 +162,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         conversationId,
         role: "assistant",
         content: fullResponse,
-        model: model || "llama3.2:3b-instruct",
+        model: modelName,
         citations: ragSources || null,
       });
 
@@ -162,13 +175,87 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Models
+  // Models - LOCAL ONLY (Ollama + local directory)
   app.get("/api/models", async (req, res) => {
     try {
       const models = await storage.getModels();
       res.json(models);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch models" });
+    }
+  });
+
+  app.get("/api/models/sync", async (req, res) => {
+    try {
+      // Sync models from Ollama
+      const ollamaAvailable = await ollamaService.isAvailable();
+      if (ollamaAvailable) {
+        const ollamaModels = await ollamaService.listModels();
+        for (const ollamaModel of ollamaModels) {
+          const existing = await storage.getModel(ollamaModel.name);
+          if (!existing) {
+            await storage.createModel({
+              name: ollamaModel.name,
+              provider: "ollama",
+              isAvailable: true,
+              parameters: null,
+            });
+          }
+        }
+      }
+
+      // Sync models from local directory
+      const localModels = await modelDirectoryScanner.scanModels();
+      for (const localModel of localModels) {
+        const existing = await storage.getModel(localModel.name);
+        if (!existing) {
+          await storage.createModel({
+            name: localModel.name,
+            provider: "local-file",
+            isAvailable: true,
+            parameters: { path: localModel.path },
+          });
+        }
+      }
+
+      const models = await storage.getModels();
+      res.json({ synced: true, models });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
+  app.post("/api/models/pull", async (req, res) => {
+    try {
+      const { name } = req.body;
+      if (!name) {
+        return res.status(400).json({ error: "Model name is required" });
+      }
+
+      // Set up SSE for pull progress
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      });
+
+      await ollamaService.pullModel(name, (progress, status) => {
+        res.write(`data: ${JSON.stringify({ progress, status })}\n\n`);
+      });
+
+      // Add model to storage
+      await storage.createModel({
+        name,
+        provider: "ollama",
+        isAvailable: true,
+        parameters: null,
+      });
+
+      res.write(`data: [DONE]\n\n`);
+      res.end();
+    } catch (error) {
+      res.write(`data: ${JSON.stringify({ error: error instanceof Error ? error.message : String(error) })}\n\n`);
+      res.end();
     }
   });
 
