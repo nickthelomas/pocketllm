@@ -76,6 +76,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Conversation Metadata
+  app.patch("/api/conversations/:id/title", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { title } = req.body;
+      if (!title || typeof title !== 'string') {
+        return res.status(400).json({ error: "Title is required" });
+      }
+      const conversation = await storage.updateConversation(id, { title });
+      if (!conversation) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
+      res.json(conversation);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update title" });
+    }
+  });
+
+  app.patch("/api/conversations/:id/tags", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { tags } = req.body;
+      if (!Array.isArray(tags)) {
+        return res.status(400).json({ error: "Tags must be an array" });
+      }
+      const conversation = await storage.updateConversation(id, { tags });
+      if (!conversation) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
+      res.json(conversation);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update tags" });
+    }
+  });
+
+  app.patch("/api/conversations/:id/favorite", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { isFavorite } = req.body;
+      if (typeof isFavorite !== 'boolean') {
+        return res.status(400).json({ error: "isFavorite must be a boolean" });
+      }
+      const conversation = await storage.updateConversation(id, { isFavorite });
+      if (!conversation) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
+      res.json(conversation);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update favorite status" });
+    }
+  });
+
   // Messages
   app.get("/api/conversations/:id/messages", async (req, res) => {
     try {
