@@ -326,6 +326,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.delete("/api/rag/documents/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      await storage.deleteRagChunks(id);
+      const success = await storage.deleteRagDocument(id);
+      
+      if (!success) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete document error:", error);
+      res.status(500).json({ error: "Failed to delete document" });
+    }
+  });
+
   app.post("/api/rag/upload", upload.single("file"), async (req: Request, res) => {
     try {
       if (!req.file) {
@@ -389,19 +407,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Upload error:", error);
       res.status(500).json({ error: "Failed to upload document" });
-    }
-  });
-
-  app.delete("/api/rag/documents/:id", async (req, res) => {
-    try {
-      const { id } = req.params;
-      const success = await storage.deleteRagDocument(id);
-      if (!success) {
-        return res.status(404).json({ error: "Document not found" });
-      }
-      res.json({ success: true });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to delete document" });
     }
   });
 

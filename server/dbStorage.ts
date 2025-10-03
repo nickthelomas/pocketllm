@@ -1,4 +1,4 @@
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { db } from "./db";
 import type { IStorage } from "./storage";
 import type {
@@ -124,26 +124,44 @@ export class DbStorage implements IStorage {
   }
 
   async createRagChunk(data: InsertRagChunk): Promise<RagChunk> {
-    const result = await db.insert(ragChunks).values(data).returning();
-    return result[0];
+    const embeddingArray = data.embedding as number[] | null;
+    
+    if (!embeddingArray || embeddingArray.length !== 768) {
+      throw new Error(`Invalid embedding dimension: expected 768, got ${embeddingArray?.length || 0}`);
+    }
+    
+    const embeddingStr = `[${embeddingArray.join(',')}]`;
+    
+    const result = await db.execute(sql`
+      INSERT INTO rag_chunks (document_id, content, embedding, embedding_vector, chunk_index, created_at)
+      VALUES (
+        ${data.documentId},
+        ${data.content},
+        ${JSON.stringify(embeddingArray)}::jsonb,
+        ${embeddingStr}::vector(768),
+        ${data.chunkIndex},
+        NOW()
+      )
+      RETURNING *
+    `);
+    
+    return result.rows[0] as RagChunk;
   }
 
   async searchSimilarChunks(embedding: number[], topK: number, threshold: number): Promise<RagChunk[]> {
-    const allChunks = await db.select().from(ragChunks);
+    const embeddingStr = `[${embedding.join(',')}]`;
     
-    const similarities = allChunks
-      .map(chunk => ({
-        chunk,
-        similarity: this.cosineSimilarity(
-          embedding,
-          chunk.embedding as number[] || []
-        )
-      }))
-      .filter(({ similarity }) => similarity >= threshold)
-      .sort((a, b) => b.similarity - a.similarity)
-      .slice(0, topK);
-
-    return similarities.map(s => s.chunk);
+    const result = await db.execute(sql`
+      SELECT *, 
+             1 - (embedding_vector <=> ${embeddingStr}::vector) as similarity
+      FROM ${ragChunks}
+      WHERE embedding_vector IS NOT NULL
+        AND 1 - (embedding_vector <=> ${embeddingStr}::vector) >= ${threshold}
+      ORDER BY embedding_vector <=> ${embeddingStr}::vector
+      LIMIT ${topK}
+    `);
+    
+    return result.rows as RagChunk[];
   }
 
   private cosineSimilarity(a: number[], b: number[]): number {
