@@ -135,6 +135,9 @@ npm run dev
 - ✅ Enhanced export/import with settings and RAG metadata (v1.1)
 - ✅ Implemented dark/light theme toggle with persistence
 - ✅ Configured Capacitor for Android APK packaging
+- ✅ **Mobile-responsive layout** with SidebarProvider pattern (offcanvas sidebar, hamburger menu at <768px)
+- ✅ Fixed model dropdown rendering with placeholder and empty state handling
+- ✅ Fixed conversation creation validation (optional fields for tags/isFavorite)
 
 ## Mobile Deployment (APK)
 
