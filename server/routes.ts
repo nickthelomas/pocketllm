@@ -48,7 +48,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const conversation = await storage.createConversation(data);
       res.json(conversation);
     } catch (error) {
-      res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+      console.error("Conversation creation error:", error);
+      const errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
+      res.status(400).json({ error: errorMessage });
     }
   });
 

@@ -106,14 +106,20 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
       </label>
       <Select value={selectedModel} onValueChange={onModelChange} data-testid="select-model">
         <SelectTrigger>
-          <SelectValue />
+          <SelectValue placeholder="Select a model..." />
         </SelectTrigger>
         <SelectContent>
-          {availableModels.map((model) => (
-            <SelectItem key={model.id} value={model.name}>
-              {model.name}
-            </SelectItem>
-          ))}
+          {availableModels.length > 0 ? (
+            availableModels.map((model) => (
+              <SelectItem key={model.id} value={model.name}>
+                {model.name}
+              </SelectItem>
+            ))
+          ) : (
+            <div className="px-2 py-1.5 text-sm text-muted-foreground">
+              No models available. Click Sync or Pull to add models.
+            </div>
+          )}
         </SelectContent>
       </Select>
       

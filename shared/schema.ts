@@ -93,6 +93,9 @@ export const insertConversationSchema = createInsertSchema(conversations).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
+}).extend({
+  tags: z.array(z.string()).optional(),
+  isFavorite: z.boolean().optional(),
 });
 
 export const insertMessageSchema = createInsertSchema(messages).omit({
