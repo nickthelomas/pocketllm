@@ -82,14 +82,14 @@ export class ContextBuilder {
     let fullContext = parts.join("\n\n");
 
     if (this.estimateTokens(fullContext) > tokenBudget) {
-      fullContext = this.truncateToFitBudget(fullContext, tier2Summary, tier1Summaries, recentMessages, tokenBudget);
+      fullContext = this.truncateToFitBudget(systemPrompt, tier2Summary, tier1Summaries, recentMessages, tokenBudget);
     }
 
     return fullContext;
   }
 
   private truncateToFitBudget(
-    fullContext: string,
+    systemPrompt: string,
     tier2Summary: string | undefined,
     tier1Summaries: string[],
     recentMessages: Message[],
@@ -98,6 +98,13 @@ export class ContextBuilder {
     const parts: string[] = [];
     let currentTokens = 0;
 
+    if (systemPrompt) {
+      const systemText = `System: ${systemPrompt}`;
+      const systemTokens = this.estimateTokens(systemText);
+      parts.push(systemText);
+      currentTokens += systemTokens;
+    }
+
     const recentText = recentMessages.map(msg => `${msg.role}: ${msg.content}`).join("\n\n");
     const recentTokens = this.estimateTokens(recentText);
     parts.push(`# Recent Messages\n${recentText}`);
@@ -105,14 +112,16 @@ export class ContextBuilder {
 
     const remainingBudget = tokenBudget - currentTokens;
 
-    if (tier2Summary && this.estimateTokens(tier2Summary) < remainingBudget * 0.3) {
-      parts.unshift(`# Conversation Overview\n${tier2Summary}`);
-      currentTokens += this.estimateTokens(tier2Summary);
-    } else if (tier1Summaries.length > 0) {
-      const tier1Budget = remainingBudget * 0.5;
-      const tier1Text = this.fitSummariesToBudget(tier1Summaries, tier1Budget);
-      if (tier1Text) {
-        parts.unshift(`# Key Discussion Points\n${tier1Text}`);
+    if (remainingBudget > 0) {
+      if (tier2Summary && this.estimateTokens(tier2Summary) < remainingBudget * 0.3) {
+        parts.splice(1, 0, `# Conversation Overview\n${tier2Summary}`);
+        currentTokens += this.estimateTokens(tier2Summary);
+      } else if (tier1Summaries.length > 0) {
+        const tier1Budget = remainingBudget * 0.5;
+        const tier1Text = this.fitSummariesToBudget(tier1Summaries, tier1Budget);
+        if (tier1Text) {
+          parts.splice(1, 0, `# Key Discussion Points\n${tier1Text}`);
+        }
       }
     }
 
