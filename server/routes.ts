@@ -484,11 +484,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           messages: await storage.getMessages(conv.id),
         }))
       );
+      const settings = await storage.getSettings();
+      const ragDocuments = await storage.getRagDocuments();
       
       const exportData = {
-        version: "1.0",
+        version: "1.1",
         exportDate: new Date().toISOString(),
-        data: allMessages,
+        conversations: allMessages,
+        settings,
+        ragDocuments,
       };
       
       res.setHeader('Content-Type', 'application/json');
@@ -507,15 +511,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const importData = JSON.parse(req.file.buffer.toString("utf-8"));
       
-      // Validate import data structure
-      if (!importData.data || !Array.isArray(importData.data)) {
+      // Support both old format (data array) and new format (conversations, settings)
+      const conversationsData = importData.conversations || importData.data;
+      
+      if (!conversationsData || !Array.isArray(conversationsData)) {
         return res.status(400).json({ error: "Invalid import file format" });
       }
 
       let importedConversations = 0;
       let importedMessages = 0;
+      let importedSettings = 0;
 
-      for (const item of importData.data) {
+      // Import conversations and messages
+      for (const item of conversationsData) {
         const { conversation, messages } = item;
         
         // Create conversation
@@ -539,10 +547,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // Import settings if present (v1.1+)
+      if (importData.settings && Array.isArray(importData.settings)) {
+        for (const setting of importData.settings) {
+          await storage.setSetting({
+            userId: setting.userId,
+            key: setting.key,
+            value: setting.value,
+          });
+          importedSettings++;
+        }
+      }
+
       res.json({
         success: true,
         importedConversations,
         importedMessages,
+        importedSettings,
       });
     } catch (error) {
       console.error("Import error:", error);
