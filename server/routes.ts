@@ -130,8 +130,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           try {
             const { embeddingService } = await import("./services/embeddings");
             const queryEmbedding = await embeddingService.generateEmbedding(message);
-            const topK = ragTopK?.value ? parseInt(ragTopK.value) : 5;
-            const threshold = ragThreshold?.value ? parseFloat(ragThreshold.value) : 0.3;
+            const topK = ragTopK?.value ? parseInt(String(ragTopK.value)) : 5;
+            const threshold = ragThreshold?.value ? parseFloat(String(ragThreshold.value)) : 0.3;
             
             const relevantChunks = await storage.searchSimilarChunks(queryEmbedding, topK, threshold);
             ragSources = relevantChunks.map(chunk => ({
@@ -354,16 +354,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Extract text content based on file type
       let content = "";
-      if (mimetype === "text/plain") {
+      
+      if (mimetype === "application/pdf") {
+        // Parse PDF - pdf-parse only works with CommonJS so we use createRequire
+        const { createRequire } = await import('module');
+        const require = createRequire(import.meta.url);
+        const pdfParse = require("pdf-parse");
+        const pdfData = await pdfParse(buffer);
+        content = pdfData.text;
+      } else if (mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+        // Parse DOCX
+        const mammoth = await import("mammoth");
+        const result = await mammoth.extractRawText({ buffer });
+        content = result.value;
+      } else if (mimetype === "text/plain") {
         content = buffer.toString("utf-8");
       } else if (mimetype === "application/json") {
         content = buffer.toString("utf-8");
       } else if (mimetype === "text/csv") {
         content = buffer.toString("utf-8");
       } else {
-        // For PDF and DOCX, we'd need additional parsing libraries
-        // For now, treat as plain text
-        content = buffer.toString("utf-8");
+        return res.status(400).json({ error: `Unsupported file type: ${mimetype}` });
       }
 
       // Create document
