@@ -30,6 +30,9 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     stopSequences: "",
     contextWindow: 10,
     memoryDepth: "last7days",
+    rawMessageCount: 10,
+    summaryFrequency: 10,
+    tokenBudget: 4000,
     baseApiUrl: "http://localhost:11434",
     bearerToken: "",
     userProfile: "",
@@ -113,6 +116,9 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       stopSequences: "",
       contextWindow: 10,
       memoryDepth: "last7days",
+      rawMessageCount: 10,
+      summaryFrequency: 10,
+      tokenBudget: 4000,
       baseApiUrl: "http://localhost:11434",
       bearerToken: "",
       userProfile: "",
@@ -251,41 +257,62 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
           <Separator />
 
-          {/* Memory & Context */}
+          {/* Hierarchical Memory */}
           <section>
             <div className="flex items-center gap-2 mb-4">
               <Zap className="w-5 h-5 text-accent" />
-              <h3 className="text-lg font-semibold">Memory & Context</h3>
+              <h3 className="text-lg font-semibold">Hierarchical Memory</h3>
+            </div>
+            
+            <div className="space-y-3 mb-4">
+              <p className="text-sm text-muted-foreground">
+                The hierarchical memory system keeps recent messages in full and summarizes older conversations into tiers, allowing unlimited conversation history within a fixed token budget.
+              </p>
             </div>
             
             <div className="grid grid-cols-2 gap-6">
               <div>
-                <Label>Context Window (Last N turns)</Label>
+                <Label>Raw Message Count</Label>
                 <Input
                   type="number"
-                  value={settings.contextWindow}
-                  onChange={(e) => setSettings(prev => ({ ...prev, contextWindow: parseInt(e.target.value) }))}
+                  value={settings.rawMessageCount}
+                  onChange={(e) => setSettings(prev => ({ ...prev, rawMessageCount: parseInt(e.target.value) }))}
                   min={1}
-                  max={100}
+                  max={50}
                   className="mt-2"
-                  data-testid="input-context-window"
+                  data-testid="input-raw-message-count"
                 />
+                <p className="text-xs text-muted-foreground mt-1">Keep last N messages in full</p>
               </div>
               
               <div>
-                <Label>Memory Depth</Label>
-                <Select value={settings.memoryDepth} onValueChange={(value) => setSettings(prev => ({ ...prev, memoryDepth: value }))}>
-                  <SelectTrigger className="mt-2" data-testid="select-memory-depth">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="current">Current session only</SelectItem>
-                    <SelectItem value="last24hours">Last 24 hours</SelectItem>
-                    <SelectItem value="last7days">Last 7 days</SelectItem>
-                    <SelectItem value="last30days">Last 30 days</SelectItem>
-                    <SelectItem value="all">All history</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label>Summary Frequency (turns)</Label>
+                <Input
+                  type="number"
+                  value={settings.summaryFrequency}
+                  onChange={(e) => setSettings(prev => ({ ...prev, summaryFrequency: parseInt(e.target.value) }))}
+                  min={5}
+                  max={50}
+                  step={5}
+                  className="mt-2"
+                  data-testid="input-summary-frequency"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Summarize every N turns</p>
+              </div>
+              
+              <div>
+                <Label>Token Budget</Label>
+                <Input
+                  type="number"
+                  value={settings.tokenBudget}
+                  onChange={(e) => setSettings(prev => ({ ...prev, tokenBudget: parseInt(e.target.value) }))}
+                  min={1000}
+                  max={32000}
+                  step={1000}
+                  className="mt-2"
+                  data-testid="input-token-budget"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Max tokens for context</p>
               </div>
             </div>
           </section>
