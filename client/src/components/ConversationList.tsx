@@ -1,6 +1,8 @@
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Plus, Trash2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Plus, Trash2, Search, X } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -13,6 +15,7 @@ interface ConversationListProps {
 
 export default function ConversationList({ selectedConversationId, onSelectConversation }: ConversationListProps) {
   const { toast } = useToast();
+  const [searchQuery, setSearchQuery] = useState("");
 
   const { data: conversations = [], isLoading } = useQuery<Conversation[]>({
     queryKey: ["/api/conversations"],
@@ -86,6 +89,15 @@ export default function ConversationList({ selectedConversationId, onSelectConve
     },
   });
 
+  const filteredConversations = useMemo(() => {
+    if (!searchQuery.trim()) return conversations;
+    
+    const query = searchQuery.toLowerCase();
+    return conversations.filter((conv) => 
+      conv.title.toLowerCase().includes(query)
+    );
+  }, [conversations, searchQuery]);
+
   const formatDate = (date: string) => {
     const now = new Date();
     const messageDate = new Date(date);
@@ -129,8 +141,32 @@ export default function ConversationList({ selectedConversationId, onSelectConve
             </Button>
           </div>
 
+          {/* Search Input */}
+          <div className="relative mb-3">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Search conversations..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 pr-9 bg-background"
+              data-testid="input-search-conversations"
+            />
+            {searchQuery && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6 p-0"
+                onClick={() => setSearchQuery("")}
+                data-testid="button-clear-search"
+              >
+                <X className="w-3 h-3" />
+              </Button>
+            )}
+          </div>
+
           <div className="space-y-2">
-            {conversations.map((conversation) => (
+            {filteredConversations.map((conversation) => (
               <div
                 key={conversation.id}
                 className={`group cursor-pointer rounded-lg p-3 transition-colors ${
@@ -183,6 +219,12 @@ export default function ConversationList({ selectedConversationId, onSelectConve
               >
                 Start your first chat
               </Button>
+            </div>
+          )}
+
+          {filteredConversations.length === 0 && conversations.length > 0 && (
+            <div className="text-center py-8">
+              <p className="text-sm text-muted-foreground">No matching conversations</p>
             </div>
           )}
         </div>
