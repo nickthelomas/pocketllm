@@ -101,7 +101,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Streaming chat endpoint - LOCAL ONLY using Ollama
   app.post("/api/chat/stream", async (req, res) => {
     try {
-      const { message, conversationId, model, context, ragSources, settings } = req.body;
+      const { message, conversationId, model, context, ragSources: providedRagSources, settings } = req.body;
       
       // Set up SSE headers
       res.writeHead(200, {
@@ -119,6 +119,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         content: message,
       });
 
+      // Automatically retrieve RAG sources if not provided
+      let ragSources = providedRagSources;
+      if (!ragSources || ragSources.length === 0) {
+        const ragEnabled = await storage.getSetting(undefined, "ragEnabled");
+        const ragTopK = await storage.getSetting(undefined, "ragTopK");
+        const ragThreshold = await storage.getSetting(undefined, "ragThreshold");
+        
+        if (ragEnabled?.value !== false) {
+          try {
+            const { embeddingService } = await import("./services/embeddings");
+            const queryEmbedding = await embeddingService.generateEmbedding(message);
+            const topK = ragTopK?.value ? parseInt(ragTopK.value) : 5;
+            const threshold = ragThreshold?.value ? parseFloat(ragThreshold.value) : 0.3;
+            
+            const relevantChunks = await storage.searchSimilarChunks(queryEmbedding, topK, threshold);
+            ragSources = relevantChunks.map(chunk => ({
+              content: chunk.content,
+              documentId: chunk.documentId,
+              chunkIndex: chunk.chunkIndex,
+            }));
+          } catch (error) {
+            console.warn("RAG retrieval failed:", error);
+            ragSources = [];
+          }
+        } else {
+          ragSources = [];
+        }
+      }
+
       // Build system prompt with user profile and RAG context
       const userProfile = await storage.getSetting(undefined, "userProfile");
       let systemPrompt = "";
@@ -126,7 +155,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         systemPrompt += `User Profile:\n${userProfile.value}\n\n`;
       }
       if (ragSources && Array.isArray(ragSources) && ragSources.length > 0) {
-        systemPrompt += "Relevant context from documents:\n" + ragSources.map((source: any) => source.content).join("\n\n") + "\n\n";
+        systemPrompt += "Relevant context from documents:\n" + ragSources.map((source: any, idx: number) => 
+          `[Document ${idx + 1}] ${source.content}`
+        ).join("\n\n") + "\n\n";
       }
 
       // Stream response from Ollama
@@ -152,9 +183,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       } catch (ollamaError) {
         console.error("Ollama error:", ollamaError);
-        res.write(`data: ${JSON.stringify({ error: "Ollama service unavailable. Please ensure Ollama is running on port 11434." })}\n\n`);
-        res.end();
-        return;
+        
+        const errorMessage = "⚠️ **Ollama Not Available**\n\nThe local Ollama server is not running. This app requires a local Ollama instance for LLM inference.\n\n**To fix this:**\n1. Install Ollama from https://ollama.ai\n2. Start Ollama: `ollama serve`\n3. Pull a model: `ollama pull llama3.2:3b-instruct`\n4. Refresh this page\n\n**Note:** This is a strictly local-only LLM app with zero cloud dependencies. All inference happens on your device.";
+        
+        fullResponse = errorMessage;
+        res.write(`data: ${JSON.stringify({ token: errorMessage, fullResponse: errorMessage })}\n\n`);
       }
 
       // Save assistant message
@@ -336,12 +369,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Create chunks (embeddings would be generated here in production)
+      // Create chunks with embeddings
+      const { embeddingService } = await import("./services/embeddings");
+      const embeddings = await embeddingService.generateBatchEmbeddings(chunks);
+      
       for (let i = 0; i < chunks.length; i++) {
         await storage.createRagChunk({
           documentId: document.id,
           content: chunks[i],
-          embedding: null, // In production, generate embeddings here
+          embedding: embeddings[i],
           chunkIndex: i,
         });
       }

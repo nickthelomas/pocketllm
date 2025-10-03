@@ -33,10 +33,11 @@ A **strictly local-only** full-stack LLM application designed for phone use (web
 
 ### 3. RAG Document Processing
 - **File Formats**: PDF, DOCX, TXT, CSV, JSON
-- **Local Embeddings**: all-MiniLM-L6-v2 (placeholder, can use any local model)
-- **Chunking**: Smart text splitting with configurable chunk size
-- **Vector Storage**: In-memory with cosine similarity search
+- **Local Embeddings**: Ollama embedding models (nomic-embed-text default) with fallback
+- **Chunking**: Smart text splitting with configurable chunk size (default: 512 words)
+- **Vector Storage**: PostgreSQL with cosine similarity search
 - **Citation Support**: Inline document references in responses
+- **Auto-Retrieval**: Automatic semantic search on user queries (configurable threshold)
 
 ### 4. MCP Server Integration
 - Tool execution framework ready
@@ -116,6 +117,9 @@ npm run dev
 - ✅ Updated frontend ModelSelector with Sync/Pull functionality
 - ✅ Streaming chat endpoint now uses Ollama (no mock data)
 - ✅ Fixed TypeScript errors and type safety throughout
+- ✅ Migrated to PostgreSQL for full data persistence
+- ✅ Implemented real local embeddings via Ollama API (nomic-embed-text)
+- ✅ Added automatic RAG retrieval with configurable settings
 
 ## User Preferences
 - Always prioritize local-only solutions
