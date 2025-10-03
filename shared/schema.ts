@@ -15,6 +15,8 @@ export const conversations = pgTable("conversations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   title: text("title").notNull(),
   userId: varchar("user_id").references(() => users.id),
+  tags: text("tags").array().default(sql`ARRAY[]::text[]`).notNull(),
+  isFavorite: boolean("is_favorite").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
