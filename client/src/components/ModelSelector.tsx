@@ -1,9 +1,8 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Download, List } from "lucide-react";
+import { Download, RefreshCw } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
-import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Model } from "@shared/schema";
 
@@ -19,26 +18,80 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
     queryKey: ["/api/models"],
   });
 
-  const pullModelMutation = useMutation({
-    mutationFn: async (modelName: string) => {
-      // In a real implementation, this would trigger model download
-      return apiRequest("POST", "/api/models", {
-        name: modelName,
-        provider: "ollama",
-        isAvailable: false,
-      });
+  const syncModelsMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch("/api/models/sync");
+      if (!response.ok) throw new Error("Failed to sync models");
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/models"] });
       toast({
-        title: "Model Pull Initiated",
-        description: "The model download has started.",
+        title: "Models Synced",
+        description: "Local models have been synchronized from Ollama.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Sync Failed",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
+    },
+  });
+
+  const pullModelMutation = useMutation({
+    mutationFn: async (modelName: string) => {
+      const response = await fetch("/api/models/pull", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: modelName }),
+      });
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("No response body");
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.trim() || !line.startsWith("data: ")) continue;
+          const data = line.slice(6);
+          if (data === "[DONE]") break;
+          
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.status) {
+              toast({
+                title: "Pulling Model",
+                description: `${parsed.status} (${Math.round(parsed.progress)}%)`,
+              });
+            }
+          } catch (e) {
+            console.error("Failed to parse pull progress:", e);
+          }
+        }
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/models"] });
+      toast({
+        title: "Model Downloaded",
+        description: "The model is now available for use.",
       });
     },
     onError: (error) => {
       toast({
         title: "Pull Failed",
-        description: error.message,
+        description: error instanceof Error ? error.message : String(error),
         variant: "destructive",
       });
     },
@@ -70,7 +123,7 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
           size="sm" 
           className="flex-1"
           onClick={() => {
-            const modelName = prompt("Enter model name to pull:");
+            const modelName = prompt("Enter Ollama model name to pull (e.g., llama3.2, mistral):");
             if (modelName) {
               pullModelMutation.mutate(modelName);
             }
@@ -79,11 +132,18 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
           data-testid="button-pull-model"
         >
           <Download className="w-4 h-4 mr-2" />
-          Pull Model
+          Pull
         </Button>
-        <Button variant="outline" size="sm" className="flex-1" data-testid="button-list-models">
-          <List className="w-4 h-4 mr-2" />
-          List
+        <Button 
+          variant="outline" 
+          size="sm" 
+          className="flex-1"
+          onClick={() => syncModelsMutation.mutate()}
+          disabled={syncModelsMutation.isPending}
+          data-testid="button-sync-models"
+        >
+          <RefreshCw className="w-4 h-4 mr-2" />
+          Sync
         </Button>
       </div>
     </div>
