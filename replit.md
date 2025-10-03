@@ -46,14 +46,28 @@ A **strictly local-only** full-stack LLM application designed for phone use (web
 - **Auto-Retrieval**: Automatic semantic search on user queries (configurable threshold)
 - **Performance**: 10-100x faster similarity search at scale vs manual calculations
 
-### 4. MCP Server Integration
+### 4. Hierarchical Conversation Memory
+- **Unlimited History**: Maintain infinite conversation context within a fixed token budget
+- **Multi-Tier Summarization**:
+  - **Tier 1**: Direct summaries of older message batches (every N turns)
+  - **Tier 2**: Meta-summaries combining multiple Tier 1 summaries
+- **Local Summarization**: Uses Ollama models for all summary generation (zero cloud dependencies)
+- **Context Assembly**: Automatic hierarchical context building (system prompt → tier-2 → tier-1 → last N raw messages)
+- **Configurable Settings**:
+  - `rawMessageCount`: Number of recent messages to keep in full (default: 10)
+  - `summaryFrequency`: Summarize every N turns (default: 10)
+  - `tokenBudget`: Maximum tokens for context (default: 4000)
+- **Smart Truncation**: Preserves system prompt and recent messages, trims summaries as needed
+- **Database Storage**: PostgreSQL table `conversation_summaries` with tier/range metadata
+
+### 5. MCP Server Integration
 - Tool execution framework ready
 - Schema and UI implemented
 - Awaiting MCP protocol implementation
 
-### 5. Settings Panel
+### 6. Settings Panel
 - LLM Parameters: Temperature, Top-P, Top-K, Max Tokens, Seed
-- Memory Depth: Adjustable context window
+- Hierarchical Memory: Raw message count, summary frequency, token budget
 - RAG Configuration: Chunk size, top-k retrieval
 - User Profile: Custom system prompt injection
 - Import/Export: Full conversation backup
@@ -138,6 +152,10 @@ npm run dev
 - ✅ **Mobile-responsive layout** with SidebarProvider pattern (offcanvas sidebar, hamburger menu at <768px)
 - ✅ Fixed model dropdown rendering with placeholder and empty state handling
 - ✅ Fixed conversation creation validation (optional fields for tags/isFavorite)
+- ✅ **Hierarchical conversation memory** with multi-tier summarization for unlimited history
+- ✅ Implemented local summarization using Ollama (tier-1 and tier-2 summaries)
+- ✅ Added context builder with smart truncation preserving system prompt and recent messages
+- ✅ Integrated memory settings UI (raw message count, summary frequency, token budget)
 
 ## Mobile Deployment (APK)
 
