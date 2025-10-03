@@ -112,6 +112,8 @@ export class MemStorage implements IStorage {
     const conversation: Conversation = {
       ...insertConversation,
       userId: insertConversation.userId ?? null,
+      tags: insertConversation.tags ?? [],
+      isFavorite: insertConversation.isFavorite ?? false,
       id,
       createdAt: now,
       updatedAt: now,
