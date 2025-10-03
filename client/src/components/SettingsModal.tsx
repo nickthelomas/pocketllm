@@ -157,12 +157,12 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden" data-testid="settings-modal">
-        <DialogHeader>
+      <DialogContent className="max-w-4xl w-[95vw] h-[90vh] max-h-[90vh] flex flex-col overflow-hidden p-0" data-testid="settings-modal">
+        <DialogHeader className="px-6 pt-6 pb-4 shrink-0">
           <DialogTitle>Settings</DialogTitle>
         </DialogHeader>
 
-        <div className="overflow-y-auto space-y-8 pr-2">
+        <div className="overflow-y-auto space-y-8 px-6 pb-6 flex-1">
           {/* LLM Parameters */}
           <section>
             <div className="flex items-center gap-2 mb-4">
@@ -170,7 +170,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               <h3 className="text-lg font-semibold">LLM Parameters</h3>
             </div>
             
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div>
                 <Label>Temperature</Label>
                 <div className="flex items-center gap-3 mt-2">
@@ -270,7 +270,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               </p>
             </div>
             
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div>
                 <Label>Raw Message Count</Label>
                 <Input
@@ -454,7 +454,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               <h3 className="text-lg font-semibold">RAG Configuration</h3>
             </div>
             
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div>
                 <Label>Chunk Size (tokens)</Label>
                 <Input
@@ -515,7 +515,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           </section>
         </div>
 
-        <div className="flex items-center justify-end gap-3 pt-6 border-t border-border">
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border shrink-0 bg-background">
           <Button variant="outline" onClick={resetToDefaults} data-testid="button-reset-settings">
             Reset to Defaults
           </Button>
