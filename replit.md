@@ -126,7 +126,47 @@ npm run dev
 - ✅ Atomic insert with dimensional validation for embeddings
 - ✅ Added DELETE endpoint for RAG documents with cascade cleanup
 
+## Mobile Deployment (APK)
+
+### Architecture
+The app uses a **client-server architecture** suitable for Termux deployment:
+1. **Backend (Express + Ollama)**: Runs in Termux on port 5000
+2. **Frontend (React)**: Can be accessed via browser OR bundled as APK
+
+### APK Setup with Capacitor
+- **App ID**: com.pocketllm.app
+- **App Name**: Pocket LLM
+- **Platform**: Android (via Capacitor)
+- **Server URL**: http://localhost:5000 (connects to Termux backend)
+
+### Building the APK
+```bash
+# 1. Build frontend
+npm run build
+
+# 2. Sync with Capacitor
+npx cap sync android
+
+# 3. Open in Android Studio to build APK
+npx cap open android
+# OR build directly:
+cd android && ./gradlew assembleDebug
+
+# APK location: android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+### Usage on Android
+1. Install Termux on Android
+2. Install Ollama in Termux: `pkg install ollama`
+3. Start Ollama: `ollama serve`
+4. Run Express backend in Termux: `npm run dev` (port 5000)
+5. Install and open the Pocket LLM APK
+6. APK connects to localhost:5000 automatically
+
+**Note**: Backend must be running in Termux before opening the APK
+
 ## User Preferences
 - Always prioritize local-only solutions
 - No cloud dependencies whatsoever
 - Offline-first design philosophy
+- Mobile-first: Termux + APK deployment
