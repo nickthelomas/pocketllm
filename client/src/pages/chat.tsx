@@ -5,6 +5,7 @@ import ConversationList from "@/components/ConversationList";
 import ChatArea from "@/components/ChatArea";
 import RAGPanel from "@/components/RAGPanel";
 import SettingsModal from "@/components/SettingsModal";
+import ThemeToggle from "@/components/ThemeToggle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { 
@@ -104,6 +105,7 @@ export default function Chat() {
         </div>
         
         <div className="flex items-center gap-3">
+          <ThemeToggle />
           <Button variant="ghost" size="sm" onClick={handleExport} data-testid="button-export">
             <Download className="w-4 h-4" />
           </Button>
