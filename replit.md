@@ -30,6 +30,11 @@ A **strictly local-only** full-stack LLM application designed for phone use (web
 - Conversation persistence with full message history
 - User profile system-prompt injection
 - Adjustable LLM parameters (temperature, top_p, top_k, max_tokens, seed)
+- **Conversation Metadata**:
+  - Auto-title generation from first message (truncates to 60 chars)
+  - Favorites: Star/unstar conversations for quick access
+  - Tags: Add/remove custom tags for organization (shows max 2 in list)
+  - Search: Filter conversations by title (case-insensitive)
 
 ### 3. RAG Document Processing
 - **File Formats**: PDF, DOCX, TXT, CSV, JSON
@@ -125,6 +130,11 @@ npm run dev
 - ✅ Integrated pgvector extension for 10-100x faster similarity search
 - ✅ Atomic insert with dimensional validation for embeddings
 - ✅ Added DELETE endpoint for RAG documents with cascade cleanup
+- ✅ Implemented conversation metadata (tags, favorites, auto-titles)
+- ✅ Added conversation search/filtering
+- ✅ Enhanced export/import with settings and RAG metadata (v1.1)
+- ✅ Implemented dark/light theme toggle with persistence
+- ✅ Configured Capacitor for Android APK packaging
 
 ## Mobile Deployment (APK)
 
