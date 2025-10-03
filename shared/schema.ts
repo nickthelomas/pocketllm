@@ -17,6 +17,7 @@ export const conversations = pgTable("conversations", {
   userId: varchar("user_id").references(() => users.id),
   tags: text("tags").array().default(sql`ARRAY[]::text[]`).notNull(),
   isFavorite: boolean("is_favorite").default(false).notNull(),
+  turnCount: integer("turn_count").default(0).notNull(), // Track conversation turns for auto-summarization
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -83,6 +84,17 @@ export const mcpServers = pgTable("mcp_servers", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Conversation Summaries table for hierarchical memory
+export const conversationSummaries = pgTable("conversation_summaries", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  conversationId: varchar("conversation_id").references(() => conversations.id).notNull(),
+  tier: integer("tier").notNull(), // 1 = message-level summary, 2 = summary of summaries
+  content: text("content").notNull(),
+  messageRangeStart: integer("message_range_start").notNull(), // First message index covered
+  messageRangeEnd: integer("message_range_end").notNull(), // Last message index covered
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Schemas
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
@@ -131,6 +143,11 @@ export const insertMcpServerSchema = createInsertSchema(mcpServers).omit({
   createdAt: true,
 });
 
+export const insertConversationSummarySchema = createInsertSchema(conversationSummaries).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -155,3 +172,6 @@ export type InsertSettings = z.infer<typeof insertSettingsSchema>;
 
 export type McpServer = typeof mcpServers.$inferSelect;
 export type InsertMcpServer = z.infer<typeof insertMcpServerSchema>;
+
+export type ConversationSummary = typeof conversationSummaries.$inferSelect;
+export type InsertConversationSummary = z.infer<typeof insertConversationSummarySchema>;

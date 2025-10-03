@@ -1,4 +1,4 @@
-import { type User, type InsertUser, type Conversation, type InsertConversation, type Message, type InsertMessage, type RagDocument, type InsertRagDocument, type RagChunk, type InsertRagChunk, type Model, type InsertModel, type Settings, type InsertSettings, type McpServer, type InsertMcpServer } from "@shared/schema";
+import { type User, type InsertUser, type Conversation, type InsertConversation, type Message, type InsertMessage, type RagDocument, type InsertRagDocument, type RagChunk, type InsertRagChunk, type Model, type InsertModel, type Settings, type InsertSettings, type McpServer, type InsertMcpServer, type ConversationSummary, type InsertConversationSummary } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -18,6 +18,12 @@ export interface IStorage {
   getMessages(conversationId: string): Promise<Message[]>;
   createMessage(message: InsertMessage): Promise<Message>;
   deleteMessages(conversationId: string): Promise<boolean>;
+
+  // Conversation Summaries
+  getSummaries(conversationId: string): Promise<ConversationSummary[]>;
+  getSummariesByTier(conversationId: string, tier: number): Promise<ConversationSummary[]>;
+  createSummary(summary: InsertConversationSummary): Promise<ConversationSummary>;
+  deleteSummaries(conversationId: string): Promise<boolean>;
 
   // RAG Documents
   getRagDocuments(): Promise<RagDocument[]>;
@@ -61,6 +67,7 @@ export class MemStorage implements IStorage {
   private models: Map<string, Model> = new Map();
   private settings: Map<string, Settings> = new Map();
   private mcpServers: Map<string, McpServer> = new Map();
+  private conversationSummaries: Map<string, ConversationSummary> = new Map();
 
   constructor() {
     // Initialize with default local-only models (Ollama)
@@ -162,6 +169,37 @@ export class MemStorage implements IStorage {
   async deleteMessages(conversationId: string): Promise<boolean> {
     const messages = Array.from(this.messages.values()).filter(msg => msg.conversationId === conversationId);
     messages.forEach(msg => this.messages.delete(msg.id));
+    return true;
+  }
+
+  // Conversation Summaries
+  async getSummaries(conversationId: string): Promise<ConversationSummary[]> {
+    return Array.from(this.conversationSummaries.values())
+      .filter(summary => summary.conversationId === conversationId)
+      .sort((a, b) => a.messageRangeStart - b.messageRangeStart);
+  }
+
+  async getSummariesByTier(conversationId: string, tier: number): Promise<ConversationSummary[]> {
+    return Array.from(this.conversationSummaries.values())
+      .filter(summary => summary.conversationId === conversationId && summary.tier === tier)
+      .sort((a, b) => a.messageRangeStart - b.messageRangeStart);
+  }
+
+  async createSummary(summary: InsertConversationSummary): Promise<ConversationSummary> {
+    const id = randomUUID();
+    const newSummary: ConversationSummary = {
+      ...summary,
+      id,
+      createdAt: new Date(),
+    };
+    this.conversationSummaries.set(id, newSummary);
+    return newSummary;
+  }
+
+  async deleteSummaries(conversationId: string): Promise<boolean> {
+    const summaries = Array.from(this.conversationSummaries.values())
+      .filter(summary => summary.conversationId === conversationId);
+    summaries.forEach(summary => this.conversationSummaries.delete(summary.id));
     return true;
   }
 

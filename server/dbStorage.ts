@@ -9,12 +9,13 @@ import type {
   RagChunk, InsertRagChunk,
   Model, InsertModel,
   Settings, InsertSettings,
-  McpServer, InsertMcpServer
+  McpServer, InsertMcpServer,
+  ConversationSummary, InsertConversationSummary
 } from "@shared/schema";
 import { 
   users, conversations, messages, 
   ragDocuments, ragChunks, models, 
-  settings, mcpServers 
+  settings, mcpServers, conversationSummaries 
 } from "@shared/schema";
 
 export class DbStorage implements IStorage {
@@ -67,6 +68,32 @@ export class DbStorage implements IStorage {
 
   async deleteMessages(conversationId: string): Promise<boolean> {
     await db.delete(messages).where(eq(messages.conversationId, conversationId));
+    return true;
+  }
+
+  // Conversation Summaries
+  async getSummaries(conversationId: string): Promise<ConversationSummary[]> {
+    return db.select().from(conversationSummaries)
+      .where(eq(conversationSummaries.conversationId, conversationId))
+      .orderBy(conversationSummaries.messageRangeStart);
+  }
+
+  async getSummariesByTier(conversationId: string, tier: number): Promise<ConversationSummary[]> {
+    return db.select().from(conversationSummaries)
+      .where(and(
+        eq(conversationSummaries.conversationId, conversationId),
+        eq(conversationSummaries.tier, tier)
+      ))
+      .orderBy(conversationSummaries.messageRangeStart);
+  }
+
+  async createSummary(data: InsertConversationSummary): Promise<ConversationSummary> {
+    const result = await db.insert(conversationSummaries).values(data).returning();
+    return result[0];
+  }
+
+  async deleteSummaries(conversationId: string): Promise<boolean> {
+    await db.delete(conversationSummaries).where(eq(conversationSummaries.conversationId, conversationId));
     return true;
   }
 
