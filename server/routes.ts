@@ -6,6 +6,8 @@ import multer from "multer";
 import { z } from "zod";
 import { ollamaService } from "./services/ollama";
 import { modelDirectoryScanner } from "./services/modelDirectory";
+import { createMemoryManager } from "./services/memoryManager";
+import { contextBuilder } from "./services/contextBuilder";
 
 // File upload configuration
 const upload = multer({ 
@@ -223,17 +225,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Build system prompt with user profile and RAG context
+      // Get memory settings
+      const rawMessageCountSetting = await storage.getSetting(undefined, "rawMessageCount");
+      const tokenBudgetSetting = await storage.getSetting(undefined, "tokenBudget");
+      const rawMessageCount = rawMessageCountSetting?.value ? parseInt(String(rawMessageCountSetting.value)) : 10;
+      const tokenBudget = tokenBudgetSetting?.value ? parseInt(String(tokenBudgetSetting.value)) : 4000;
+
+      // Build hierarchical context
+      const allMessages = await storage.getMessages(conversationId);
+      const summaries = await storage.getSummaries(conversationId);
+      
       const userProfile = await storage.getSetting(undefined, "userProfile");
-      let systemPrompt = "";
+      let baseSystemPrompt = "";
       if (userProfile) {
-        systemPrompt += `User Profile:\n${userProfile.value}\n\n`;
+        baseSystemPrompt += `User Profile:\n${userProfile.value}\n\n`;
       }
       if (ragSources && Array.isArray(ragSources) && ragSources.length > 0) {
-        systemPrompt += "Relevant context from documents:\n" + ragSources.map((source: any, idx: number) => 
+        baseSystemPrompt += "Relevant context from documents:\n" + ragSources.map((source: any, idx: number) => 
           `[Document ${idx + 1}] ${source.content}`
         ).join("\n\n") + "\n\n";
       }
+
+      const hierarchicalContext = contextBuilder.buildHierarchicalContext(
+        allMessages,
+        summaries,
+        baseSystemPrompt,
+        { rawMessageCount, tokenBudget }
+      );
 
       // Stream response from Ollama
       let fullResponse = "";
@@ -243,7 +261,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         for await (const chunk of ollamaService.generateStream({
           model: modelName,
           prompt: message,
-          system: systemPrompt || undefined,
+          system: hierarchicalContext.fullContext || undefined,
           temperature: settings?.temperature ?? 0.7,
           top_p: settings?.topP ?? 0.9,
           top_k: settings?.topK ?? 40,
@@ -273,6 +291,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         model: modelName,
         citations: ragSources || null,
       });
+
+      // Increment turn count and check for summarization
+      const summaryFrequencySetting = await storage.getSetting(undefined, "summaryFrequency");
+      const summaryFrequency = summaryFrequencySetting?.value ? parseInt(String(summaryFrequencySetting.value)) : 10;
+      
+      const memoryManager = createMemoryManager(storage, {
+        summaryFrequency,
+        model: modelName,
+      });
+      
+      await memoryManager.incrementTurnCount(conversationId);
+      await memoryManager.checkAndSummarize(conversationId);
 
       res.write(`data: [DONE]\n\n`);
       res.end();
