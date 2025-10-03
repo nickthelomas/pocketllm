@@ -8,6 +8,8 @@ import SettingsModal from "@/components/SettingsModal";
 import ThemeToggle from "@/components/ThemeToggle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { SidebarProvider, Sidebar, SidebarContent, SidebarTrigger } from "@/components/ui/sidebar";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { 
   Settings, 
   Download, 
@@ -20,6 +22,7 @@ export default function Chat() {
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState("llama3.2:3b-instruct");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   // Health check
   const { data: health } = useQuery({
@@ -77,81 +80,90 @@ export default function Chat() {
   const totalChunks = ragDocuments?.reduce((sum, doc) => sum + doc.chunksCount, 0) || 0;
 
   return (
-    <div className="h-screen flex flex-col bg-background text-foreground">
-      {/* Top Navigation Bar */}
-      <header className="bg-card border-b border-border px-4 py-3 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-              <Lightbulb className="w-5 h-5 text-primary-foreground" />
+    <SidebarProvider defaultOpen={true}>
+      <div className="h-screen flex flex-col bg-background text-foreground w-full">
+        {/* Top Navigation Bar */}
+        <header className="bg-card border-b border-border px-4 py-3 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2 md:gap-4">
+            {/* Mobile Menu Trigger */}
+            <SidebarTrigger className="md:hidden" data-testid="button-mobile-menu" />
+            
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+                <Lightbulb className="w-5 h-5 text-primary-foreground" />
+              </div>
+              <h1 className="text-lg md:text-xl font-semibold text-foreground">Pocket LLM</h1>
             </div>
-            <h1 className="text-xl font-semibold text-foreground">Pocket LLM</h1>
+            
+            {/* Server Status Badge - Hidden on very small screens */}
+            <Badge 
+              variant="secondary" 
+              className={`hidden sm:flex ${health ? 'bg-accent/10 border-accent/30 text-accent' : 'bg-destructive/10 border-destructive/30 text-destructive'}`}
+              data-testid="server-status-badge"
+            >
+              <div className={`w-2 h-2 rounded-full mr-2 ${health ? 'bg-accent animate-pulse' : 'bg-destructive'}`} />
+              {health ? 'Server Online' : 'Server Offline'}
+            </Badge>
+            
+            {/* RAG Status Badge - Hidden on mobile */}
+            {!isMobile && (
+              <Badge variant="secondary" className="bg-primary/10 border-primary/30 text-primary" data-testid="rag-status-badge">
+                {ragDocuments?.length || 0} docs / {totalChunks} chunks
+              </Badge>
+            )}
           </div>
           
-          {/* Server Status Badge */}
-          <Badge 
-            variant="secondary" 
-            className={`${health ? 'bg-accent/10 border-accent/30 text-accent' : 'bg-destructive/10 border-destructive/30 text-destructive'}`}
-            data-testid="server-status-badge"
-          >
-            <div className={`w-2 h-2 rounded-full mr-2 ${health ? 'bg-accent animate-pulse' : 'bg-destructive'}`} />
-            {health ? 'Server Online' : 'Server Offline'}
-          </Badge>
-          
-          {/* RAG Status Badge */}
-          <Badge variant="secondary" className="bg-primary/10 border-primary/30 text-primary" data-testid="rag-status-badge">
-            {ragDocuments?.length || 0} docs / {totalChunks} chunks
-          </Badge>
-        </div>
-        
-        <div className="flex items-center gap-3">
-          <ThemeToggle />
-          <Button variant="ghost" size="sm" onClick={handleExport} data-testid="button-export">
-            <Download className="w-4 h-4" />
-          </Button>
-          <Button variant="ghost" size="sm" onClick={handleImport} data-testid="button-import">
-            <Upload className="w-4 h-4" />
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => setIsSettingsOpen(true)} data-testid="button-settings">
-            <Settings className="w-4 h-4" />
-          </Button>
-        </div>
-      </header>
+          <div className="flex items-center gap-2 md:gap-3">
+            <ThemeToggle />
+            <Button variant="ghost" size="sm" onClick={handleExport} data-testid="button-export">
+              <Download className="w-4 h-4" />
+            </Button>
+            <Button variant="ghost" size="sm" onClick={handleImport} data-testid="button-import">
+              <Upload className="w-4 h-4" />
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setIsSettingsOpen(true)} data-testid="button-settings">
+              <Settings className="w-4 h-4" />
+            </Button>
+          </div>
+        </header>
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left Sidebar */}
-        <aside className="w-80 bg-card border-r border-border flex flex-col">
-          <div className="p-4 border-b border-border">
-            <ModelSelector 
+        {/* Main Content Area */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Left Sidebar - Responsive */}
+          <Sidebar side="left" collapsible="offcanvas">
+            <SidebarContent className="flex flex-col h-full">
+              <div className="p-4 border-b border-border">
+                <ModelSelector 
+                  selectedModel={selectedModel}
+                  onModelChange={setSelectedModel}
+                />
+              </div>
+              <ConversationList 
+                selectedConversationId={selectedConversationId}
+                onSelectConversation={setSelectedConversationId}
+              />
+            </SidebarContent>
+          </Sidebar>
+
+          {/* Main Chat Area */}
+          <main className="flex-1 flex flex-col bg-background min-w-0">
+            <ChatArea 
+              conversationId={selectedConversationId}
               selectedModel={selectedModel}
-              onModelChange={setSelectedModel}
+              onConversationCreated={setSelectedConversationId}
             />
-          </div>
-          <ConversationList 
-            selectedConversationId={selectedConversationId}
-            onSelectConversation={setSelectedConversationId}
-          />
-        </aside>
+          </main>
 
-        {/* Main Chat Area */}
-        <main className="flex-1 flex flex-col bg-background">
-          <ChatArea 
-            conversationId={selectedConversationId}
-            selectedModel={selectedModel}
-            onConversationCreated={setSelectedConversationId}
-          />
-        </main>
+          {/* Right Sidebar - RAG Panel - Hidden on mobile */}
+          {!isMobile && <RAGPanel />}
+        </div>
 
-        {/* Right Sidebar - RAG Panel */}
-        <RAGPanel />
+        {/* Settings Modal */}
+        <SettingsModal 
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+        />
       </div>
-
-      {/* Settings Modal */}
-      <SettingsModal 
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-      />
-    </div>
+    </SidebarProvider>
   );
 }
