@@ -19,8 +19,13 @@ A **strictly local-only** full-stack LLM application designed for phone use (web
 ## Key Features
 
 ### 1. Model Management
-- **Sync Models**: `/api/models/sync` - Auto-discovers models from Ollama + local directory
+- **Sync Models**: `/api/models/sync` - Auto-discovers models from Ollama + local directory with detailed metadata
 - **Pull Models**: `/api/models/pull` - Download models from Ollama registry with streaming progress
+- **Catalog Browser**: `/api/models/catalog` - Browse available models with sizes/descriptions before pulling
+- **Auto-Selection**: Automatically selects smallest model on first launch
+- **Local Persistence**: Selected model saved to localStorage
+- **Validation**: Only allows selecting models that exist locally
+- **Offline-First**: Graceful degradation with clear error messages when Ollama unavailable
 - **Supported Providers**: 
   - `ollama` - Models from local Ollama server
   - `local-file` - GGUF/GGML files in `./models` folder
@@ -156,6 +161,12 @@ npm run dev
 - ✅ Implemented local summarization using Ollama (tier-1 and tier-2 summaries)
 - ✅ Added context builder with smart truncation preserving system prompt and recent messages
 - ✅ Integrated memory settings UI (raw message count, summary frequency, token budget)
+- ✅ **Mobile-first Settings modal** with fully scrollable 90vh flex layout
+- ✅ **Base API URL persistence** (defaults to http://127.0.0.1:11434 for Termux compatibility)
+- ✅ **Dynamic Ollama service configuration** - reads baseApiUrl from settings database
+- ✅ **Completely rewrote ModelSelector** with auto-selection of smallest model, localStorage persistence, and pull catalog dialog
+- ✅ **Enhanced model management**: sync returns detailed metadata, new catalog endpoint for browsing available models
+- ✅ **Fixed model pull error handling** to properly propagate network/offline failures with destructive toasts
 
 ## Mobile Deployment (APK)
 
