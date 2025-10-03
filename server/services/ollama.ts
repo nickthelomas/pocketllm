@@ -44,7 +44,11 @@ interface OllamaGenerateChunk {
 export class OllamaService {
   private baseUrl: string;
 
-  constructor(baseUrl: string = "http://localhost:11434") {
+  constructor(baseUrl: string = "http://127.0.0.1:11434") {
+    this.baseUrl = baseUrl;
+  }
+
+  setBaseUrl(baseUrl: string) {
     this.baseUrl = baseUrl;
   }
 

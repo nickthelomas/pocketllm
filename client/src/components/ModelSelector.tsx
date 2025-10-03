@@ -1,6 +1,8 @@
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Download, RefreshCw } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -11,30 +13,78 @@ interface ModelSelectorProps {
   onModelChange: (model: string) => void;
 }
 
+interface CatalogModel {
+  name: string;
+  size: string;
+  description: string;
+}
+
 export default function ModelSelector({ selectedModel, onModelChange }: ModelSelectorProps) {
   const { toast } = useToast();
+  const [showCatalog, setShowCatalog] = useState(false);
+  const [isPulling, setIsPulling] = useState(false);
 
-  const { data: models = [] } = useQuery<Model[]>({
+  const { data: models = [], isLoading: modelsLoading } = useQuery<Model[]>({
     queryKey: ["/api/models"],
   });
+
+  const { data: catalogData, isError: catalogError } = useQuery({
+    queryKey: ["/api/models/catalog"],
+    enabled: showCatalog,
+    retry: false,
+  });
+
+  const availableModels = models.filter(model => model.isAvailable);
+
+  useEffect(() => {
+    if (!modelsLoading && availableModels.length > 0 && !selectedModel) {
+      const savedModel = localStorage.getItem("selectedModel");
+      
+      if (savedModel && availableModels.some(m => m.name === savedModel)) {
+        onModelChange(savedModel);
+      } else {
+        const sortedBySize = [...availableModels].sort((a, b) => {
+          const sizeA = (a.parameters as any)?.size || Infinity;
+          const sizeB = (b.parameters as any)?.size || Infinity;
+          return sizeA - sizeB;
+        });
+        
+        const smallestModel = sortedBySize[0];
+        if (smallestModel) {
+          onModelChange(smallestModel.name);
+          localStorage.setItem("selectedModel", smallestModel.name);
+        }
+      }
+    }
+  }, [modelsLoading, availableModels, selectedModel, onModelChange]);
+
+  useEffect(() => {
+    if (selectedModel) {
+      localStorage.setItem("selectedModel", selectedModel);
+    }
+  }, [selectedModel]);
 
   const syncModelsMutation = useMutation({
     mutationFn: async () => {
       const response = await fetch("/api/models/sync");
-      if (!response.ok) throw new Error("Failed to sync models");
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to sync models");
+      }
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/models"] });
+      const modelCount = data.models?.length || 0;
       toast({
         title: "Models Synced",
-        description: "Local models have been synchronized from Ollama.",
+        description: `Found ${modelCount} local models from Ollama and GGUF directories.`,
       });
     },
     onError: (error) => {
       toast({
         title: "Sync Failed",
-        description: error instanceof Error ? error.message : String(error),
+        description: error instanceof Error ? error.message : "Could not connect to Ollama or scan local directories",
         variant: "destructive",
       });
     },
@@ -42,11 +92,19 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
 
   const pullModelMutation = useMutation({
     mutationFn: async (modelName: string) => {
+      setIsPulling(true);
       const response = await fetch("/api/models/pull", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: modelName }),
       });
+
+      if (response.status === 503) {
+        const error = await response.json();
+        throw new Error(error.message || "Network unavailable");
+      }
+
+      if (!response.ok) throw new Error("Failed to pull model");
 
       const reader = response.body?.getReader();
       if (!reader) throw new Error("No response body");
@@ -69,42 +127,61 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
           
           try {
             const parsed = JSON.parse(data);
+            if (parsed.error) {
+              throw new Error(parsed.error);
+            }
             if (parsed.status) {
               toast({
                 title: "Pulling Model",
-                description: `${parsed.status} (${Math.round(parsed.progress)}%)`,
+                description: `${parsed.status} (${Math.round(parsed.progress || 0)}%)`,
               });
             }
           } catch (e) {
-            console.error("Failed to parse pull progress:", e);
+            if (e instanceof Error && e.message !== "Unexpected end of JSON input") {
+              throw e;
+            }
           }
         }
       }
     },
     onSuccess: () => {
+      setIsPulling(false);
+      setShowCatalog(false);
       queryClient.invalidateQueries({ queryKey: ["/api/models"] });
       toast({
-        title: "Model Downloaded",
-        description: "The model is now available for use.",
+        title: "Pull Completed",
+        description: "Model downloaded and ready to use.",
       });
     },
     onError: (error) => {
+      setIsPulling(false);
       toast({
         title: "Pull Failed",
-        description: error instanceof Error ? error.message : String(error),
+        description: error instanceof Error ? error.message : "Could not download model",
         variant: "destructive",
       });
     },
   });
 
-  const availableModels = models.filter(model => model.isAvailable);
+  const handleModelSelect = (value: string) => {
+    const modelExists = availableModels.some(m => m.name === value);
+    if (modelExists) {
+      onModelChange(value);
+    } else {
+      toast({
+        title: "Model not found locally",
+        description: "Please sync or pull the model first.",
+        variant: "destructive",
+      });
+    }
+  };
 
   return (
     <div>
       <label className="block text-xs font-medium text-muted-foreground mb-2">
         Active Model
       </label>
-      <Select value={selectedModel} onValueChange={onModelChange} data-testid="select-model">
+      <Select value={selectedModel} onValueChange={handleModelSelect} data-testid="select-model">
         <SelectTrigger>
           <SelectValue placeholder="Select a model..." />
         </SelectTrigger>
@@ -128,13 +205,8 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
           variant="outline" 
           size="sm" 
           className="flex-1"
-          onClick={() => {
-            const modelName = prompt("Enter Ollama model name to pull (e.g., llama3.2, mistral):");
-            if (modelName) {
-              pullModelMutation.mutate(modelName);
-            }
-          }}
-          disabled={pullModelMutation.isPending}
+          onClick={() => setShowCatalog(true)}
+          disabled={isPulling}
           data-testid="button-pull-model"
         >
           <Download className="w-4 h-4 mr-2" />
@@ -145,13 +217,69 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
           size="sm" 
           className="flex-1"
           onClick={() => syncModelsMutation.mutate()}
-          disabled={syncModelsMutation.isPending}
+          disabled={syncModelsMutation.isPending || isPulling}
           data-testid="button-sync-models"
         >
           <RefreshCw className="w-4 h-4 mr-2" />
           Sync
         </Button>
       </div>
+
+      <Dialog open={showCatalog} onOpenChange={setShowCatalog}>
+        <DialogContent className="max-w-md" data-testid="dialog-pull-catalog">
+          <DialogHeader>
+            <DialogTitle>Pull Model from Ollama</DialogTitle>
+          </DialogHeader>
+
+          {catalogError ? (
+            <div className="space-y-4">
+              <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
+                <p className="text-sm text-destructive font-medium">Network unavailable</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Ollama is not running or network is down. Start Ollama to pull models.
+                </p>
+              </div>
+              <Button 
+                variant="outline" 
+                className="w-full" 
+                onClick={() => setShowCatalog(false)}
+                data-testid="button-close-catalog"
+              >
+                Close
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Select a model to download from Ollama:
+              </p>
+              
+              {catalogData?.catalog?.map((model: CatalogModel) => (
+                <div 
+                  key={model.name}
+                  className="flex items-center justify-between p-3 border border-border rounded-lg hover:bg-accent/50 transition-colors"
+                >
+                  <div className="flex-1">
+                    <h4 className="text-sm font-medium">{model.name}</h4>
+                    <p className="text-xs text-muted-foreground mt-0.5">{model.description}</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-mono text-muted-foreground">{model.size}</span>
+                    <Button
+                      size="sm"
+                      onClick={() => pullModelMutation.mutate(model.name)}
+                      disabled={isPulling}
+                      data-testid={`button-pull-${model.name}`}
+                    >
+                      Pull
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

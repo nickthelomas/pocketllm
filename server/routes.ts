@@ -9,6 +9,14 @@ import { modelDirectoryScanner } from "./services/modelDirectory";
 import { createMemoryManager } from "./services/memoryManager";
 import { contextBuilder } from "./services/contextBuilder";
 
+// Helper to get Ollama service with configured base URL
+async function getOllamaService() {
+  const baseApiUrlSetting = await storage.getSetting(undefined, "baseApiUrl");
+  const baseUrl = baseApiUrlSetting?.value ? String(baseApiUrlSetting.value) : "http://127.0.0.1:11434";
+  ollamaService.setBaseUrl(baseUrl);
+  return ollamaService;
+}
+
 // File upload configuration
 const upload = multer({ 
   storage: multer.memoryStorage(),
@@ -257,8 +265,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let fullResponse = "";
       const modelName = model || "llama3.2:3b-instruct";
       
+      const ollama = await getOllamaService();
+      
       try {
-        for await (const chunk of ollamaService.generateStream({
+        for await (const chunk of ollama.generateStream({
           model: modelName,
           prompt: message,
           system: hierarchicalContext.fullContext || undefined,
@@ -325,10 +335,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/models/sync", async (req, res) => {
     try {
-      // Sync models from Ollama
-      const ollamaAvailable = await ollamaService.isAvailable();
+      const syncedModels: any[] = [];
+      
+      // Sync models from Ollama with configured base URL
+      const ollama = await getOllamaService();
+      const ollamaAvailable = await ollama.isAvailable();
       if (ollamaAvailable) {
-        const ollamaModels = await ollamaService.listModels();
+        const ollamaModels = await ollama.listModels();
         for (const ollamaModel of ollamaModels) {
           const existing = await storage.getModel(ollamaModel.name);
           if (!existing) {
@@ -336,9 +349,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
               name: ollamaModel.name,
               provider: "ollama",
               isAvailable: true,
-              parameters: null,
+              parameters: { size: ollamaModel.size, details: ollamaModel.details },
             });
           }
+          syncedModels.push({
+            name: ollamaModel.name,
+            provider: "ollama",
+            size: ollamaModel.size,
+            details: ollamaModel.details,
+          });
         }
       }
 
@@ -354,12 +373,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
             parameters: { path: localModel.path },
           });
         }
+        syncedModels.push({
+          name: localModel.name,
+          provider: "local-file",
+          path: localModel.path,
+        });
       }
 
       const models = await storage.getModels();
       res.json({ synced: true, models });
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
+  app.get("/api/models/catalog", async (req, res) => {
+    try {
+      const ollama = await getOllamaService();
+      const ollamaAvailable = await ollama.isAvailable();
+      
+      if (!ollamaAvailable) {
+        return res.status(503).json({ 
+          error: "Ollama not available",
+          message: "Network unavailable or Ollama not running",
+          offline: true 
+        });
+      }
+
+      const catalog = [
+        { name: "llama3.2:3b-instruct", size: "2.0GB", description: "Fast and efficient 3B parameter model" },
+        { name: "llama3.2:1b", size: "1.3GB", description: "Smallest Llama 3.2 model" },
+        { name: "mistral:7b-instruct-v0.2", size: "4.1GB", description: "Mistral 7B instruct model" },
+        { name: "phi3:mini", size: "2.3GB", description: "Microsoft Phi-3 mini model" },
+        { name: "qwen2:1.5b", size: "0.9GB", description: "Qwen 1.5B chat model" },
+        { name: "gemma:2b", size: "1.4GB", description: "Google Gemma 2B model" },
+      ];
+      
+      res.json({ catalog, available: true });
+    } catch (error) {
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : String(error),
+        offline: true
+      });
     }
   });
 
@@ -370,6 +425,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Model name is required" });
       }
 
+      const ollama = await getOllamaService();
+      const ollamaAvailable = await ollama.isAvailable();
+      
+      if (!ollamaAvailable) {
+        return res.status(503).json({ 
+          error: "Network unavailable",
+          message: "Ollama not running or network down"
+        });
+      }
+
       // Set up SSE for pull progress
       res.writeHead(200, {
         'Content-Type': 'text/event-stream',
@@ -377,7 +442,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         'Connection': 'keep-alive',
       });
 
-      await ollamaService.pullModel(name, (progress, status) => {
+      await ollama.pullModel(name, (progress, status) => {
         res.write(`data: ${JSON.stringify({ progress, status })}\n\n`);
       });
 
