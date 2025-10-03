@@ -171,6 +171,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         content: message,
       });
 
+      // Auto-generate title from first message
+      const existingMessages = await storage.getMessages(conversationId);
+      if (existingMessages.length === 1) {
+        // This is the first message, generate title
+        const title = message.slice(0, 60).trim() + (message.length > 60 ? '...' : '');
+        await storage.updateConversation(conversationId, { title });
+      }
+
       // Automatically retrieve RAG sources if not provided
       let ragSources = providedRagSources;
       if (!ragSources || ragSources.length === 0) {
