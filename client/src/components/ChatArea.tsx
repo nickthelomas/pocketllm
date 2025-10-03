@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Send, Paperclip, Square, RotateCcw, Settings } from "lucide-react";
 import MessageBubble from "@/components/MessageBubble";
 import MCPToolsDialog from "@/components/MCPToolsDialog";
+import TagsEditor from "@/components/TagsEditor";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -30,7 +31,7 @@ export default function ChatArea({ conversationId, selectedModel, onConversation
     enabled: !!conversationId,
   });
 
-  const { data: conversation } = useQuery<{ title: string }>({
+  const { data: conversation } = useQuery<{ id: string; title: string; tags: string[]; isFavorite: boolean }>({
     queryKey: ["/api/conversations", conversationId],
     enabled: !!conversationId,
   });
@@ -208,28 +209,36 @@ export default function ChatArea({ conversationId, selectedModel, onConversation
   return (
     <>
       {/* Chat Header */}
-      <div className="px-6 py-4 border-b border-border flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h2 className="text-lg font-semibold text-foreground" data-testid="text-conversation-title">
-            {conversation?.title || "Loading..."}
-          </h2>
-          <Badge variant="secondary" className="text-xs" data-testid="text-message-count">
-            {messages.length} messages
-          </Badge>
+      <div className="px-6 py-4 border-b border-border">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-3">
+            <h2 className="text-lg font-semibold text-foreground" data-testid="text-conversation-title">
+              {conversation?.title || "Loading..."}
+            </h2>
+            <Badge variant="secondary" className="text-xs" data-testid="text-message-count">
+              {messages.length} messages
+            </Badge>
+          </div>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => {
+              if (confirm("Are you sure you want to clear this chat?")) {
+                clearChatMutation.mutate();
+              }
+            }}
+            disabled={clearChatMutation.isPending}
+            data-testid="button-clear-current-chat"
+          >
+            Clear Chat
+          </Button>
         </div>
-        <Button
-          variant="destructive"
-          size="sm"
-          onClick={() => {
-            if (confirm("Are you sure you want to clear this chat?")) {
-              clearChatMutation.mutate();
-            }
-          }}
-          disabled={clearChatMutation.isPending}
-          data-testid="button-clear-current-chat"
-        >
-          Clear Chat
-        </Button>
+        {conversation && (
+          <TagsEditor 
+            conversationId={conversationId!} 
+            tags={conversation.tags || []} 
+          />
+        )}
       </div>
 
       {/* Messages Container */}

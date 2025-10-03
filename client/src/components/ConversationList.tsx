@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Trash2, Search, X } from "lucide-react";
+import { Plus, Trash2, Search, X, Star } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -83,6 +83,24 @@ export default function ConversationList({ selectedConversationId, onSelectConve
     onError: (error) => {
       toast({
         title: "Failed to clear conversations",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const toggleFavoriteMutation = useMutation({
+    mutationFn: async ({ id, isFavorite }: { id: string; isFavorite: boolean }) => {
+      const response = await apiRequest("PATCH", `/api/conversations/${id}/favorite`, { isFavorite });
+      return { id, data: await response.json() };
+    },
+    onSuccess: ({ id }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations", id] });
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to update favorite",
         description: error.message,
         variant: "destructive",
       });
@@ -179,13 +197,49 @@ export default function ConversationList({ selectedConversationId, onSelectConve
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-sm font-medium text-foreground truncate">
-                      {conversation.title}
-                    </h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-medium text-foreground truncate flex-1">
+                        {conversation.title}
+                      </h3>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className={`h-6 w-6 p-0 ${conversation.isFavorite ? 'text-yellow-500' : 'text-muted-foreground'}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleFavoriteMutation.mutate({ 
+                            id: conversation.id, 
+                            isFavorite: !conversation.isFavorite 
+                          });
+                        }}
+                        disabled={toggleFavoriteMutation.isPending}
+                        data-testid={`button-favorite-${conversation.id}`}
+                      >
+                        <Star className={`w-4 h-4 ${conversation.isFavorite ? 'fill-current' : ''}`} />
+                      </Button>
+                    </div>
                     <div className="flex items-center gap-2 mt-2">
                       <span className={`text-xs ${selectedConversationId === conversation.id ? 'text-primary' : 'text-muted-foreground'}`}>
                         {formatDate(conversation.updatedAt.toString())}
                       </span>
+                      {conversation.tags && conversation.tags.length > 0 && (
+                        <div className="flex gap-1">
+                          {conversation.tags.slice(0, 2).map((tag, idx) => (
+                            <span
+                              key={idx}
+                              className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary/20 text-primary"
+                              data-testid={`tag-${tag}`}
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                          {conversation.tags.length > 2 && (
+                            <span className="text-xs text-muted-foreground">
+                              +{conversation.tags.length - 2}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <Button
