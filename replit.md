@@ -186,10 +186,11 @@ npm run dev
   - Better error handling for network/manifest failures during model pull
 - ✅ **Critical Termux deployment fixes (Oct 2025)**:
   - Fixed termux-start.sh to pull llama3.2:1b (1.3GB) instead of incorrect 3b-instruct (2GB)
-  - Changed backend to run in development mode with `npm run dev` instead of production build
+  - Changed backend to run with `npx tsx` directly for Termux compatibility
   - Ensures USE_MEMSTORAGE=true is properly respected without DATABASE_URL errors
   - Removed unnecessary production build step from Termux startup
   - Fixed DATABASE_URL lazy initialization in db.ts for MemStorage compatibility
+  - Fixed tsx command resolution using npx for reliable execution in Termux environment
 - ✅ **Model pull and mobile UX improvements (Oct 2025)**:
   - Fixed mobile overflow on pull catalog and health monitor dialogs with flex layout and scrollable content
   - Improved model pull flow: dialog stays open during download with persistent progress visibility

@@ -108,7 +108,7 @@ if ! ollama list | grep -q "llama3.2:1b"; then
 fi
 
 # Check if backend already running
-if pgrep -f "npm.*start" > /dev/null || pgrep -f "node.*dist/index" > /dev/null; then
+if pgrep -f "server/index.ts" > /dev/null || pgrep -f "node.*dist/index" > /dev/null; then
     warn "Backend already running, skipping..."
 else
     log "Starting Express backend..."
@@ -118,7 +118,7 @@ else
     
     log "Using MemStorage (offline-ready, defaults pre-configured)"
     
-    npm run dev > "$BACKEND_LOG" 2>&1 &
+    npx tsx server/index.ts > "$BACKEND_LOG" 2>&1 &
     BACKEND_PID=$!
     echo "$BACKEND_PID" >> "$PID_FILE"
     log "Backend PID: $BACKEND_PID"
