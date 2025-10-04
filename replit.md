@@ -5,6 +5,31 @@ Pocket LLM is a local-first, full-stack LLM application designed for mobile use 
 
 ## Recent Changes (October 2025)
 
+### Bug Fixes and UI Improvements (October 4, 2025)
+- **Fixed Model Loading Timeout**: Extended timeout from 30s to 60s with loading spinner and toast notifications
+- **Fixed Health Monitor**: Now correctly tracks and displays actual loaded model state with auto-refresh
+- **Fixed RAG Document Upload**: Properly accepts PDF, DOCX, TXT, CSV, JSON files with improved MIME type detection
+- **Added Mobile RAG Panel**: Sliding panel using Sheet component with FileStack icon trigger for mobile access
+- **Fixed Model Auto-Selection**: Corrected initial state to allow proper smallest model selection on startup
+- **Fixed Settings Save**: Resolved null value database errors by converting nulls to empty strings
+
+### GPU Acceleration Support (October 4, 2025)
+- **Settings UI**: Added comprehensive GPU configuration in Settings modal
+  - Enable/disable GPU acceleration toggle
+  - GPU layers slider (0-32) for layer offloading
+  - Main GPU device selection
+  - CPU threads configuration
+  - Batch size settings
+  - Low VRAM mode for mobile devices
+- **Termux Setup Script**: Created `scripts/termux-gpu-setup.sh` for mobile GPU optimization
+  - Auto-detects chipset (Snapdragon vs Exynos)
+  - Installs appropriate GPU libraries (OpenCL/Vulkan)
+  - Compiles llama.cpp with GPU support
+  - Configures optimal settings per device type
+  - Provides device-specific optimization tips
+
+## Recent Changes (October 2025)
+
 ### Multi-Provider Architecture Implemented
 - **OpenRouter Cloud Integration**: 
   - Added OpenRouterService with streaming chat support

@@ -70,7 +70,8 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         apiRequest("POST", "/api/settings", {
           userId: null,
           key,
-          value,
+          // Convert null to empty string for database compatibility
+          value: value === null ? "" : value,
         })
       );
       await Promise.all(promises);
