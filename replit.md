@@ -189,6 +189,14 @@ npm run dev
   - Changed backend to run in development mode with `npm run dev` instead of production build
   - Ensures USE_MEMSTORAGE=true is properly respected without DATABASE_URL errors
   - Removed unnecessary production build step from Termux startup
+  - Fixed DATABASE_URL lazy initialization in db.ts for MemStorage compatibility
+- ✅ **Model pull and mobile UX improvements (Oct 2025)**:
+  - Fixed mobile overflow on pull catalog and health monitor dialogs with flex layout and scrollable content
+  - Improved model pull flow: dialog stays open during download with persistent progress visibility
+  - Added clear success/error states with manual close buttons after download
+  - Prevents accidental dialog closing during active downloads with user feedback toast
+  - Backend now verifies models exist in Ollama before adding to database (prevents failed models in dropdown)
+  - Enhanced pull dialog with dynamic titles, "Try Again" button for errors, and completion confirmation
 
 ## Mobile Deployment (APK)
 
