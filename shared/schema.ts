@@ -54,13 +54,15 @@ export const ragChunks = pgTable("rag_chunks", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-// Models table - STRICTLY LOCAL ONLY (no cloud providers)
+// Models table - Supports local, remote, and cloud providers
 export const models = pgTable("models", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull().unique(),
-  provider: text("provider").notNull(), // "ollama" or "local-file" ONLY
+  provider: text("provider").notNull(), // "ollama" | "huggingface" | "local-file" | "openrouter" | "remote-ollama"
   isAvailable: boolean("is_available").default(true).notNull(),
   parameters: jsonb("parameters"), // Default parameters for this model
+  pricing: jsonb("pricing"), // { prompt: number, completion: number } per 1M tokens (for cloud models)
+  contextLength: integer("context_length"), // Maximum context window
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
