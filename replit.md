@@ -177,6 +177,12 @@ npm run dev
   - Improved model load validation (30s timeout, proper error messages, clears on failure)
   - Changed default model to llama3.2:1b (1.3GB) instead of 3b-instruct/phi3:mini (2.3GB) for better phone performance
   - Model catalog now shows smallest models first with performance warnings for heavy models
+- ✅ **Latest UI/UX improvements (Oct 2025)**:
+  - Fixed health monitor overflow - now scrollable with max-height 90vh, always closeable
+  - Fixed model pull progress flickering - single persistent progress indicator in dialog instead of toast spam
+  - Fixed duplicate models bug - only adds to DB after successful pull completion with deduplication check
+  - Improved termux-install.sh - added Ollama health check retries (30s timeout), version validation, better error handling
+  - Added HuggingFace model source - catalog now shows both Ollama and HuggingFace models with visual badges (HF models pending full implementation)
   - Better error handling for network/manifest failures during model pull
 
 ## Mobile Deployment (APK)

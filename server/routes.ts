@@ -459,13 +459,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      // Catalog with both Ollama registry and HuggingFace-sourced models
       const catalog = [
-        { name: "qwen2:1.5b", size: "0.9GB", description: "⚡ Ultra-fast 1.5B model - best for phones" },
-        { name: "llama3.2:1b", size: "1.3GB", description: "⭐ Recommended - smallest Llama 3.2" },
-        { name: "gemma:2b", size: "1.4GB", description: "Google Gemma 2B - balanced speed/quality" },
-        { name: "llama3.2:3b-instruct", size: "2.0GB", description: "Llama 3.2 3B - better quality, slower" },
-        { name: "phi3:mini", size: "2.3GB", description: "⚠️ Phi-3 mini - may be slow on phones" },
-        { name: "mistral:7b-instruct-v0.2", size: "4.1GB", description: "Mistral 7B - requires strong hardware" },
+        // Ollama Registry - Standard models
+        { 
+          name: "qwen2:1.5b", 
+          size: "0.9GB", 
+          description: "⚡ Ultra-fast 1.5B - best for phones",
+          source: "ollama",
+          provider: "ollama"
+        },
+        { 
+          name: "llama3.2:1b", 
+          size: "1.3GB", 
+          description: "⭐ Recommended - smallest Llama 3.2",
+          source: "ollama",
+          provider: "ollama"
+        },
+        { 
+          name: "gemma:2b", 
+          size: "1.4GB", 
+          description: "Google Gemma 2B - balanced",
+          source: "ollama",
+          provider: "ollama"
+        },
+        { 
+          name: "llama3.2:3b-instruct", 
+          size: "2.0GB", 
+          description: "Llama 3.2 3B - better quality",
+          source: "ollama",
+          provider: "ollama"
+        },
+        { 
+          name: "phi3:mini", 
+          size: "2.3GB", 
+          description: "⚠️ Phi-3 mini - may be slow on phones",
+          source: "ollama",
+          provider: "ollama"
+        },
+        { 
+          name: "mistral:7b-instruct-v0.2", 
+          size: "4.1GB", 
+          description: "⚠️ Mistral 7B - strong hardware needed",
+          source: "ollama",
+          provider: "ollama"
+        },
+        
+        // HuggingFace - Optimized GGUF models (requires download + import)
+        { 
+          name: "bartowski/Llama-3.2-1B-Instruct-GGUF:Q4_K_M", 
+          size: "0.8GB", 
+          description: "🤗 Llama 3.2 1B Q4 - quantized for mobile",
+          source: "huggingface",
+          provider: "huggingface",
+          downloadUrl: "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf"
+        },
+        { 
+          name: "bartowski/Qwen2.5-1.5B-Instruct-GGUF:Q4_K_M", 
+          size: "1.0GB", 
+          description: "🤗 Qwen 2.5 1.5B Q4 - ultra-efficient",
+          source: "huggingface",
+          provider: "huggingface",
+          downloadUrl: "https://huggingface.co/bartowski/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf"
+        },
       ];
       
       res.json({ catalog, available: true });
@@ -479,7 +535,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/models/pull", async (req, res) => {
     try {
-      const { name } = req.body;
+      const { name, source = "ollama" } = req.body;
       if (!name) {
         return res.status(400).json({ error: "Model name is required" });
       }
@@ -501,6 +557,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         'Connection': 'keep-alive',
       });
 
+      if (source === "huggingface") {
+        // HuggingFace models: Download GGUF and import to Ollama
+        // Note: This is a simplified implementation
+        // In production, you'd want proper GGUF download and Modelfile creation
+        res.write(`data: ${JSON.stringify({ 
+          error: "HuggingFace model import not yet implemented. Coming soon!" 
+        })}\n\n`);
+        res.end();
+        return;
+      }
+
+      // Ollama registry pull (default)
       await ollama.pullModel(name, (progress, status) => {
         res.write(`data: ${JSON.stringify({ progress, status })}\n\n`);
       });

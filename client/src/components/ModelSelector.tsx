@@ -17,6 +17,9 @@ interface CatalogModel {
   name: string;
   size: string;
   description: string;
+  source: string;
+  provider: string;
+  downloadUrl?: string;
 }
 
 export default function ModelSelector({ selectedModel, onModelChange }: ModelSelectorProps) {
@@ -118,14 +121,14 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
   });
 
   const pullModelMutation = useMutation({
-    mutationFn: async (modelName: string) => {
+    mutationFn: async ({ name, source }: { name: string; source: string }) => {
       setIsPulling(true);
       setPullProgress({ status: "Starting download...", progress: 0 });
       
       const response = await fetch("/api/models/pull", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: modelName }),
+        body: JSON.stringify({ name, source }),
       });
 
       if (response.status === 503) {
@@ -309,14 +312,21 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
                       className="flex items-center justify-between p-3 border border-border rounded-lg hover:bg-accent/50 transition-colors"
                     >
                       <div className="flex-1">
-                        <h4 className="text-sm font-medium">{model.name}</h4>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-medium">{model.name}</h4>
+                          {model.source === "huggingface" && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-700 dark:text-orange-300 border border-orange-500/30">
+                              HF
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs text-muted-foreground mt-0.5">{model.description}</p>
                       </div>
                       <div className="flex items-center gap-3">
                         <span className="text-xs font-mono text-muted-foreground">{model.size}</span>
                         <Button
                           size="sm"
-                          onClick={() => pullModelMutation.mutate(model.name)}
+                          onClick={() => pullModelMutation.mutate({ name: model.name, source: model.source })}
                           disabled={isPulling}
                           data-testid={`button-pull-${model.name}`}
                         >
