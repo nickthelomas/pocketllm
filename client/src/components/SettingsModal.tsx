@@ -35,6 +35,8 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     tokenBudget: 4000,
     baseApiUrl: "http://127.0.0.1:11434",
     bearerToken: "",
+    openrouter_api_key: "",
+    remote_ollama_url: "",
     userProfile: "",
     chunkSize: 512,
     chunkOverlap: 50,
@@ -100,7 +102,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       const settingsObj = storedSettings.reduce((acc, setting) => {
         acc[setting.key] = setting.value;
         return acc;
-      }, {});
+      }, {} as Record<string, any>);
       
       setSettings(prev => ({ ...prev, ...settingsObj }));
     }
@@ -121,6 +123,8 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       tokenBudget: 4000,
       baseApiUrl: "http://127.0.0.1:11434",
       bearerToken: "",
+      openrouter_api_key: "",
+      remote_ollama_url: "",
       userProfile: "",
       chunkSize: 512,
       chunkOverlap: 50,
@@ -349,7 +353,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             
             <div className="space-y-4">
               <div>
-                <Label>Base API URL</Label>
+                <Label>Base API URL (Local Ollama)</Label>
                 <Input
                   type="url"
                   value={settings.baseApiUrl}
@@ -357,6 +361,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   className="mt-2 font-mono"
                   data-testid="input-base-api-url"
                 />
+                <p className="text-xs text-muted-foreground mt-1">URL for local Ollama server (e.g., http://127.0.0.1:11434)</p>
               </div>
               
               <div>
@@ -369,6 +374,34 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   className="mt-2 font-mono"
                   data-testid="input-bearer-token"
                 />
+              </div>
+
+              <Separator className="my-6" />
+
+              <div>
+                <Label>OpenRouter API Key</Label>
+                <Input
+                  type="password"
+                  placeholder="Enter OpenRouter API key for cloud models"
+                  value={settings.openrouter_api_key}
+                  onChange={(e) => setSettings(prev => ({ ...prev, openrouter_api_key: e.target.value }))}
+                  className="mt-2 font-mono"
+                  data-testid="input-openrouter-api-key"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Get your API key from <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" className="underline">openrouter.ai/keys</a></p>
+              </div>
+
+              <div>
+                <Label>Remote Ollama URL</Label>
+                <Input
+                  type="url"
+                  placeholder="Enter Tailscale URL (e.g., http://100.x.x.x:11434)"
+                  value={settings.remote_ollama_url}
+                  onChange={(e) => setSettings(prev => ({ ...prev, remote_ollama_url: e.target.value }))}
+                  className="mt-2 font-mono"
+                  data-testid="input-remote-ollama-url"
+                />
+                <p className="text-xs text-muted-foreground mt-1">URL for remote Ollama server via Tailscale or VPN</p>
               </div>
             </div>
           </section>

@@ -3,7 +3,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Download, RefreshCw } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Download, RefreshCw, Wifi, WifiOff } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Model } from "@shared/schema";
@@ -22,6 +23,17 @@ interface CatalogModel {
   downloadUrl?: string;
 }
 
+interface NetworkStatus {
+  online: boolean;
+  openrouter: boolean;
+}
+
+interface Settings {
+  id: string;
+  key: string;
+  value: any;
+}
+
 export default function ModelSelector({ selectedModel, onModelChange }: ModelSelectorProps) {
   const { toast } = useToast();
   const [showCatalog, setShowCatalog] = useState(false);
@@ -29,9 +41,19 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
   const [pullProgress, setPullProgress] = useState<{ status: string; progress: number } | null>(null);
   const [pullComplete, setPullComplete] = useState(false);
   const [pullError, setPullError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("local");
 
   const { data: models = [], isLoading: modelsLoading } = useQuery<Model[]>({
     queryKey: ["/api/models"],
+  });
+
+  const { data: networkStatus } = useQuery<NetworkStatus>({
+    queryKey: ["/api/system/network"],
+    refetchInterval: 30000,
+  });
+
+  const { data: settings = [] } = useQuery<Settings[]>({
+    queryKey: ["/api/settings"],
   });
 
   const { data: catalogData, isError: catalogError } = useQuery<{ catalog: CatalogModel[] }>({
@@ -40,7 +62,23 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
     retry: false,
   });
 
+  const isOnline = networkStatus?.online ?? true;
+  const hasOpenRouterKey = settings.some(s => s.key === "openrouter_api_key" && s.value);
+  const hasRemoteUrl = settings.some(s => s.key === "remote_ollama_url" && s.value);
+
   const availableModels = models.filter(model => model.isAvailable);
+
+  const localModels = availableModels.filter(m => 
+    ['ollama', 'huggingface', 'local-file'].includes(m.provider)
+  );
+  const cloudModels = availableModels.filter(m => m.provider === 'openrouter');
+  const remoteModels = availableModels.filter(m => m.provider === 'remote-ollama');
+
+  const catalogLocalModels = catalogData?.catalog?.filter(m => 
+    ['ollama', 'huggingface', 'local-file'].includes(m.provider)
+  ) || [];
+  const catalogCloudModels = catalogData?.catalog?.filter(m => m.provider === 'openrouter') || [];
+  const catalogRemoteModels = catalogData?.catalog?.filter(m => m.provider === 'remote-ollama') || [];
 
   useEffect(() => {
     if (!modelsLoading && availableModels.length > 0 && !selectedModel) {
@@ -160,7 +198,7 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
           if (!line.trim() || !line.startsWith("data: ")) continue;
           const data = line.slice(6);
           if (data === "[DONE]") {
-            return; // Success
+            return;
           }
           
           try {
@@ -209,11 +247,71 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
     }
   };
 
+  const getTabContent = (tabModels: Model[], tabName: string) => {
+    if (tabModels.length === 0) {
+      return (
+        <div className="text-center py-8 text-sm text-muted-foreground" data-testid={`text-no-${tabName}-models`}>
+          No {tabName} models available. Click Pull to add models.
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-2" data-testid={`list-${tabName}-models`}>
+        {tabModels.map((model) => (
+          <div
+            key={model.id}
+            className="flex items-center justify-between p-3 border border-border rounded-lg hover:bg-accent/50 transition-colors"
+            data-testid={`card-model-${model.name}`}
+          >
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm font-medium truncate">{model.name}</h4>
+                {model.provider === "huggingface" && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-700 dark:text-orange-300 border border-orange-500/30 shrink-0">
+                    HF
+                  </span>
+                )}
+                {model.provider === "openrouter" && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-700 dark:text-blue-300 border border-blue-500/30 shrink-0">
+                    OR
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5 capitalize">{model.provider}</p>
+            </div>
+            <Button
+              size="sm"
+              variant={selectedModel === model.name ? "default" : "outline"}
+              onClick={() => handleModelSelect(model.name)}
+              data-testid={`button-select-${model.name}`}
+            >
+              {selectedModel === model.name ? "Active" : "Select"}
+            </Button>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div>
-      <label className="block text-xs font-medium text-muted-foreground mb-2">
-        Active Model
-      </label>
+      <div className="flex items-center justify-between mb-2">
+        <label className="block text-xs font-medium text-muted-foreground">
+          Active Model
+        </label>
+        <div className="flex items-center gap-1" data-testid="indicator-network-status">
+          {isOnline ? (
+            <Wifi className="w-3 h-3 text-green-600 dark:text-green-400" />
+          ) : (
+            <WifiOff className="w-3 h-3 text-destructive" />
+          )}
+          <span className="text-[10px] text-muted-foreground">
+            {isOnline ? "Online" : "Offline"}
+          </span>
+        </div>
+      </div>
+
       <Select value={selectedModel} onValueChange={handleModelSelect} data-testid="select-model">
         <SelectTrigger>
           <SelectValue placeholder="Select a model..." />
@@ -258,18 +356,67 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
         </Button>
       </div>
 
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4" data-testid="tabs-provider">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="local" data-testid="tab-local">
+            Local
+          </TabsTrigger>
+          <TabsTrigger 
+            value="cloud" 
+            disabled={!isOnline || !hasOpenRouterKey}
+            className="disabled:opacity-50"
+            data-testid="tab-cloud"
+          >
+            Cloud
+          </TabsTrigger>
+          <TabsTrigger 
+            value="remote" 
+            disabled={!hasRemoteUrl}
+            className="disabled:opacity-50"
+            data-testid="tab-remote"
+          >
+            Remote
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="local" className="mt-3">
+          {getTabContent(localModels, "local")}
+        </TabsContent>
+
+        <TabsContent value="cloud" className="mt-3">
+          {!hasOpenRouterKey ? (
+            <div className="text-center py-8 text-sm text-muted-foreground" data-testid="text-configure-openrouter">
+              Configure OpenRouter API key in Settings to use cloud models.
+            </div>
+          ) : !isOnline ? (
+            <div className="text-center py-8 text-sm text-muted-foreground" data-testid="text-cloud-offline">
+              Network offline. Cloud models require internet connectivity.
+            </div>
+          ) : (
+            getTabContent(cloudModels, "cloud")
+          )}
+        </TabsContent>
+
+        <TabsContent value="remote" className="mt-3">
+          {!hasRemoteUrl ? (
+            <div className="text-center py-8 text-sm text-muted-foreground" data-testid="text-configure-remote">
+              Configure Remote Ollama URL in Settings to use remote models.
+            </div>
+          ) : (
+            getTabContent(remoteModels, "remote")
+          )}
+        </TabsContent>
+      </Tabs>
+
       <Dialog open={showCatalog} onOpenChange={(open) => {
-        // Prevent closing during active download
         if (!isPulling || open) {
           setShowCatalog(open);
           if (!open) {
-            // Reset states when closing
             setPullProgress(null);
             setPullComplete(false);
             setPullError(null);
           }
         } else if (isPulling && !open) {
-          // User tried to close during download - show feedback
           toast({
             title: "Download in progress",
             description: "Please wait for the download to complete before closing.",
@@ -338,61 +485,206 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
               </Button>
             </div>
           ) : (
-            <div className="space-y-3 overflow-y-auto flex-1 pr-2">
-              {pullProgress ? (
-                <div className="space-y-3">
-                  <div className="p-4 bg-primary/10 border border-primary/20 rounded-lg">
-                    <p className="text-sm font-medium mb-2">{pullProgress.status}</p>
-                    <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
-                      <div 
-                        className="bg-primary h-full transition-all duration-300"
-                        style={{ width: `${pullProgress.progress}%` }}
-                      />
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col" data-testid="tabs-pull-catalog">
+              <TabsList className="grid w-full grid-cols-3 shrink-0">
+                <TabsTrigger value="local" data-testid="tab-pull-local">
+                  Local
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="cloud" 
+                  disabled={!isOnline || !hasOpenRouterKey}
+                  className="disabled:opacity-50"
+                  data-testid="tab-pull-cloud"
+                >
+                  Cloud
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="remote" 
+                  disabled={!hasRemoteUrl}
+                  className="disabled:opacity-50"
+                  data-testid="tab-pull-remote"
+                >
+                  Remote
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="local" className="flex-1 overflow-y-auto mt-3 pr-2">
+                {pullProgress ? (
+                  <div className="space-y-3">
+                    <div className="p-4 bg-primary/10 border border-primary/20 rounded-lg">
+                      <p className="text-sm font-medium mb-2">{pullProgress.status}</p>
+                      <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
+                        <div 
+                          className="bg-primary h-full transition-all duration-300"
+                          style={{ width: `${pullProgress.progress}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2">{pullProgress.progress}% complete</p>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-2">{pullProgress.progress}% complete</p>
+                    <p className="text-xs text-center text-muted-foreground">
+                      Downloading model... Please keep this dialog open.
+                    </p>
                   </div>
-                  <p className="text-xs text-center text-muted-foreground">
-                    Downloading model... Please keep this dialog open.
-                  </p>
-                </div>
-              ) : (
-                <>
-                  <p className="text-sm text-muted-foreground">
-                    Select a model to download from Ollama:
-                  </p>
-                  
-                  {catalogData?.catalog?.map((model: CatalogModel) => (
-                    <div 
-                      key={model.name}
-                      className="flex items-center justify-between p-3 border border-border rounded-lg hover:bg-accent/50 transition-colors"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-sm font-medium truncate">{model.name}</h4>
-                          {model.source === "huggingface" && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-700 dark:text-orange-300 border border-orange-500/30 shrink-0">
-                              HF
-                            </span>
-                          )}
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      Select a model to download:
+                    </p>
+                    
+                    {catalogLocalModels.map((model: CatalogModel) => (
+                      <div 
+                        key={model.name}
+                        className="flex items-center justify-between p-3 border border-border rounded-lg hover:bg-accent/50 transition-colors"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-sm font-medium truncate">{model.name}</h4>
+                            {model.provider === "huggingface" && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-700 dark:text-orange-300 border border-orange-500/30 shrink-0">
+                                HF
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{model.description}</p>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{model.description}</p>
+                        <div className="flex items-center gap-3 shrink-0 ml-3">
+                          <span className="text-xs font-mono text-muted-foreground">{model.size}</span>
+                          <Button
+                            size="sm"
+                            onClick={() => pullModelMutation.mutate({ name: model.name, source: model.source, downloadUrl: model.downloadUrl })}
+                            disabled={isPulling}
+                            data-testid={`button-pull-${model.name}`}
+                          >
+                            Pull
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-3 shrink-0 ml-3">
-                        <span className="text-xs font-mono text-muted-foreground">{model.size}</span>
-                        <Button
-                          size="sm"
-                          onClick={() => pullModelMutation.mutate({ name: model.name, source: model.source, downloadUrl: model.downloadUrl })}
-                          disabled={isPulling}
-                          data-testid={`button-pull-${model.name}`}
-                        >
-                          Pull
-                        </Button>
+                    ))}
+                  </div>
+                )}
+              </TabsContent>
+
+              <TabsContent value="cloud" className="flex-1 overflow-y-auto mt-3 pr-2">
+                {!hasOpenRouterKey ? (
+                  <div className="p-4 bg-muted/50 border border-border rounded-lg">
+                    <p className="text-sm text-muted-foreground">
+                      Configure OpenRouter API key in Settings to pull cloud models.
+                    </p>
+                  </div>
+                ) : !isOnline ? (
+                  <div className="p-4 bg-muted/50 border border-border rounded-lg">
+                    <p className="text-sm text-muted-foreground">
+                      Network offline. Cloud models require internet connectivity.
+                    </p>
+                  </div>
+                ) : pullProgress ? (
+                  <div className="space-y-3">
+                    <div className="p-4 bg-primary/10 border border-primary/20 rounded-lg">
+                      <p className="text-sm font-medium mb-2">{pullProgress.status}</p>
+                      <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
+                        <div 
+                          className="bg-primary h-full transition-all duration-300"
+                          style={{ width: `${pullProgress.progress}%` }}
+                        />
                       </div>
+                      <p className="text-xs text-muted-foreground mt-2">{pullProgress.progress}% complete</p>
                     </div>
-                  ))}
-                </>
-              )}
-            </div>
+                    <p className="text-xs text-center text-muted-foreground">
+                      Downloading model... Please keep this dialog open.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      Select a cloud model to download:
+                    </p>
+                    
+                    {catalogCloudModels.map((model: CatalogModel) => (
+                      <div 
+                        key={model.name}
+                        className="flex items-center justify-between p-3 border border-border rounded-lg hover:bg-accent/50 transition-colors"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-sm font-medium truncate">{model.name}</h4>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-700 dark:text-blue-300 border border-blue-500/30 shrink-0">
+                              OR
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{model.description}</p>
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0 ml-3">
+                          <span className="text-xs font-mono text-muted-foreground">{model.size}</span>
+                          <Button
+                            size="sm"
+                            onClick={() => pullModelMutation.mutate({ name: model.name, source: model.source, downloadUrl: model.downloadUrl })}
+                            disabled={isPulling}
+                            data-testid={`button-pull-${model.name}`}
+                          >
+                            Pull
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </TabsContent>
+
+              <TabsContent value="remote" className="flex-1 overflow-y-auto mt-3 pr-2">
+                {!hasRemoteUrl ? (
+                  <div className="p-4 bg-muted/50 border border-border rounded-lg">
+                    <p className="text-sm text-muted-foreground">
+                      Configure Remote Ollama URL in Settings to pull remote models.
+                    </p>
+                  </div>
+                ) : pullProgress ? (
+                  <div className="space-y-3">
+                    <div className="p-4 bg-primary/10 border border-primary/20 rounded-lg">
+                      <p className="text-sm font-medium mb-2">{pullProgress.status}</p>
+                      <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
+                        <div 
+                          className="bg-primary h-full transition-all duration-300"
+                          style={{ width: `${pullProgress.progress}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2">{pullProgress.progress}% complete</p>
+                    </div>
+                    <p className="text-xs text-center text-muted-foreground">
+                      Downloading model... Please keep this dialog open.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      Select a remote model to download:
+                    </p>
+                    
+                    {catalogRemoteModels.map((model: CatalogModel) => (
+                      <div 
+                        key={model.name}
+                        className="flex items-center justify-between p-3 border border-border rounded-lg hover:bg-accent/50 transition-colors"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <h4 className="text-sm font-medium truncate">{model.name}</h4>
+                          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{model.description}</p>
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0 ml-3">
+                          <span className="text-xs font-mono text-muted-foreground">{model.size}</span>
+                          <Button
+                            size="sm"
+                            onClick={() => pullModelMutation.mutate({ name: model.name, source: model.source, downloadUrl: model.downloadUrl })}
+                            disabled={isPulling}
+                            data-testid={`button-pull-${model.name}`}
+                          >
+                            Pull
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
           )}
         </DialogContent>
       </Dialog>
