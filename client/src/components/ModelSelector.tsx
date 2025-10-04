@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Download, RefreshCw, Wifi, WifiOff } from "lucide-react";
+import { Download, Loader2, RefreshCw, Wifi, WifiOff } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Model } from "@shared/schema";
@@ -114,12 +114,27 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
         body: JSON.stringify({ name: modelName }),
       });
       if (!response.ok) {
-        throw new Error("Failed to load model");
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to load model");
       }
       return response.json();
     },
+    onMutate: (modelName) => {
+      // Show loading toast when mutation starts
+      const model = availableModels.find(m => m.name === modelName);
+      if (model && ['ollama', 'huggingface', 'local-file'].includes(model.provider)) {
+        toast({
+          title: "Loading Model",
+          description: `Loading ${modelName}... This may take up to 60 seconds for larger models.`,
+        });
+      }
+    },
     onSuccess: (data) => {
       console.log(`✅ ${data.message}`);
+      toast({
+        title: "Model Ready",
+        description: data.message,
+      });
     },
     onError: (error) => {
       console.error("Model load failed:", error);
@@ -286,9 +301,15 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
         </div>
       </div>
 
-      <Select value={selectedModel} onValueChange={handleModelSelect} data-testid="select-model">
-        <SelectTrigger>
-          <SelectValue placeholder="Select a model..." />
+      <Select value={selectedModel} onValueChange={handleModelSelect} disabled={loadModelMutation.isPending} data-testid="select-model">
+        <SelectTrigger className="relative">
+          {loadModelMutation.isPending && (
+            <Loader2 className="absolute left-3 w-4 h-4 animate-spin text-muted-foreground" />
+          )}
+          <SelectValue 
+            placeholder={loadModelMutation.isPending ? "Loading model..." : "Select a model..."} 
+            className={loadModelMutation.isPending ? "ml-6" : ""}
+          />
         </SelectTrigger>
         <SelectContent>
           {availableModels.length > 0 ? (

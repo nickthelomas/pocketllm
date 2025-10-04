@@ -81,7 +81,7 @@ export class OllamaService {
           prompt: "test",
           stream: false
         }),
-        signal: AbortSignal.timeout(30000), // 30s timeout
+        signal: AbortSignal.timeout(60000), // 60s timeout
       });
 
       if (!response.ok) {
@@ -104,7 +104,7 @@ export class OllamaService {
       // Provide more helpful error messages
       if (error instanceof Error) {
         if (error.message.includes("timeout") || error.message.includes("AbortError")) {
-          throw new Error(`Model "${modelName}" took too long to load (>30s). Try a smaller model.`);
+          throw new Error(`Model "${modelName}" took too long to load (>60s). Try a smaller model.`);
         }
         if (error.message.includes("ECONNREFUSED")) {
           throw new Error(`Cannot connect to Ollama server. Is it running?`);
