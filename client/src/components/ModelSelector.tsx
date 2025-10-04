@@ -23,6 +23,7 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
   const { toast } = useToast();
   const [showCatalog, setShowCatalog] = useState(false);
   const [isPulling, setIsPulling] = useState(false);
+  const [pullProgress, setPullProgress] = useState<{ status: string; progress: number } | null>(null);
 
   const { data: models = [], isLoading: modelsLoading } = useQuery<Model[]>({
     queryKey: ["/api/models"],
@@ -119,6 +120,8 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
   const pullModelMutation = useMutation({
     mutationFn: async (modelName: string) => {
       setIsPulling(true);
+      setPullProgress({ status: "Starting download...", progress: 0 });
+      
       const response = await fetch("/api/models/pull", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -149,7 +152,10 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
         for (const line of lines) {
           if (!line.trim() || !line.startsWith("data: ")) continue;
           const data = line.slice(6);
-          if (data === "[DONE]") break;
+          if (data === "[DONE]") {
+            setPullProgress(null);
+            return; // Success
+          }
           
           try {
             const parsed = JSON.parse(data);
@@ -157,9 +163,9 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
               throw new Error(parsed.error);
             }
             if (parsed.status) {
-              toast({
-                title: "Pulling Model",
-                description: `${parsed.status} (${Math.round(parsed.progress || 0)}%)`,
+              setPullProgress({
+                status: parsed.status,
+                progress: Math.round(parsed.progress || 0)
               });
             }
           } catch (e) {
@@ -172,6 +178,7 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
     },
     onSuccess: () => {
       setIsPulling(false);
+      setPullProgress(null);
       setShowCatalog(false);
       queryClient.invalidateQueries({ queryKey: ["/api/models"] });
       toast({
@@ -181,6 +188,7 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
     },
     onError: (error) => {
       setIsPulling(false);
+      setPullProgress(null);
       toast({
         title: "Pull Failed",
         description: error instanceof Error ? error.message : "Could not download model",
@@ -276,32 +284,49 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
             </div>
           ) : (
             <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                Select a model to download from Ollama:
-              </p>
-              
-              {catalogData?.catalog?.map((model: CatalogModel) => (
-                <div 
-                  key={model.name}
-                  className="flex items-center justify-between p-3 border border-border rounded-lg hover:bg-accent/50 transition-colors"
-                >
-                  <div className="flex-1">
-                    <h4 className="text-sm font-medium">{model.name}</h4>
-                    <p className="text-xs text-muted-foreground mt-0.5">{model.description}</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-mono text-muted-foreground">{model.size}</span>
-                    <Button
-                      size="sm"
-                      onClick={() => pullModelMutation.mutate(model.name)}
-                      disabled={isPulling}
-                      data-testid={`button-pull-${model.name}`}
-                    >
-                      Pull
-                    </Button>
+              {pullProgress ? (
+                <div className="space-y-3">
+                  <div className="p-4 bg-primary/10 border border-primary/20 rounded-lg">
+                    <p className="text-sm font-medium mb-2">{pullProgress.status}</p>
+                    <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
+                      <div 
+                        className="bg-primary h-full transition-all duration-300"
+                        style={{ width: `${pullProgress.progress}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">{pullProgress.progress}% complete</p>
                   </div>
                 </div>
-              ))}
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    Select a model to download from Ollama:
+                  </p>
+                  
+                  {catalogData?.catalog?.map((model: CatalogModel) => (
+                    <div 
+                      key={model.name}
+                      className="flex items-center justify-between p-3 border border-border rounded-lg hover:bg-accent/50 transition-colors"
+                    >
+                      <div className="flex-1">
+                        <h4 className="text-sm font-medium">{model.name}</h4>
+                        <p className="text-xs text-muted-foreground mt-0.5">{model.description}</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs font-mono text-muted-foreground">{model.size}</span>
+                        <Button
+                          size="sm"
+                          onClick={() => pullModelMutation.mutate(model.name)}
+                          disabled={isPulling}
+                          data-testid={`button-pull-${model.name}`}
+                        >
+                          Pull
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
           )}
         </DialogContent>

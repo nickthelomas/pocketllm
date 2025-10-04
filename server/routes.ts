@@ -505,13 +505,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.write(`data: ${JSON.stringify({ progress, status })}\n\n`);
       });
 
-      // Add model to storage
-      await storage.createModel({
-        name,
-        provider: "ollama",
-        isAvailable: true,
-        parameters: null,
-      });
+      // Only add model to storage AFTER successful pull
+      // Check if model already exists to prevent duplicates
+      const existingModels = await storage.getModels();
+      const modelExists = existingModels.some(m => m.name === name);
+      
+      if (!modelExists) {
+        await storage.createModel({
+          name,
+          provider: "ollama",
+          isAvailable: true,
+          parameters: null,
+        });
+      }
 
       res.write(`data: [DONE]\n\n`);
       res.end();

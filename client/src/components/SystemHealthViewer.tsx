@@ -63,15 +63,15 @@ export default function SystemHealthViewer({ open, onOpenChange }: SystemHealthV
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl" data-testid="dialog-system-health">
-        <DialogHeader>
+      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col" data-testid="dialog-system-health">
+        <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Activity className="w-5 h-5" />
             System Health Monitor
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-6">
+        <div className="space-y-6 overflow-y-auto flex-1 pr-2">
           {/* Overall Status */}
           <div className={`p-4 rounded-lg border ${
             allHealthy 
