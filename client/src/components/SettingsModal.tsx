@@ -167,44 +167,56 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           <section>
             <div className="flex items-center gap-2 mb-4">
               <Settings2 className="w-5 h-5 text-primary" />
-              <h3 className="text-lg font-semibold">LLM Parameters</h3>
+              <h3 className="text-lg font-semibold">Response Style</h3>
             </div>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div>
-                <Label>Temperature</Label>
-                <div className="flex items-center gap-3 mt-2">
-                  <Slider
-                    value={[settings.temperature]}
-                    onValueChange={([value]) => setSettings(prev => ({ ...prev, temperature: value }))}
-                    max={2}
-                    min={0}
-                    step={0.1}
-                    className="flex-1"
-                    data-testid="slider-temperature"
-                  />
-                  <span className="text-sm font-mono w-12 text-right">{settings.temperature}</span>
+                <Label>Response Creativity</Label>
+                <div className="space-y-2 mt-2">
+                  <div className="flex items-center gap-3">
+                    <Slider
+                      value={[settings.temperature]}
+                      onValueChange={([value]) => setSettings(prev => ({ ...prev, temperature: value }))}
+                      max={2}
+                      min={0}
+                      step={0.1}
+                      className="flex-1"
+                      data-testid="slider-temperature"
+                    />
+                    <span className="text-sm font-mono w-12 text-right">{settings.temperature}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>Focused</span>
+                    <span>Imaginative</span>
+                  </div>
                 </div>
               </div>
               
               <div>
-                <Label>Top P</Label>
-                <div className="flex items-center gap-3 mt-2">
-                  <Slider
-                    value={[settings.topP]}
-                    onValueChange={([value]) => setSettings(prev => ({ ...prev, topP: value }))}
-                    max={1}
-                    min={0}
-                    step={0.05}
-                    className="flex-1"
-                    data-testid="slider-top-p"
-                  />
-                  <span className="text-sm font-mono w-12 text-right">{settings.topP}</span>
+                <Label>Word Choice Variety</Label>
+                <div className="space-y-2 mt-2">
+                  <div className="flex items-center gap-3">
+                    <Slider
+                      value={[settings.topP]}
+                      onValueChange={([value]) => setSettings(prev => ({ ...prev, topP: value }))}
+                      max={1}
+                      min={0}
+                      step={0.05}
+                      className="flex-1"
+                      data-testid="slider-top-p"
+                    />
+                    <span className="text-sm font-mono w-12 text-right">{settings.topP}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>Predictable</span>
+                    <span>Diverse</span>
+                  </div>
                 </div>
               </div>
               
               <div>
-                <Label>Max Tokens</Label>
+                <Label>Response Length (words)</Label>
                 <Input
                   type="number"
                   value={settings.maxTokens}
@@ -212,38 +224,46 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   className="mt-2"
                   data-testid="input-max-tokens"
                 />
+                <p className="text-xs text-muted-foreground mt-1">Maximum words in response</p>
               </div>
               
               <div>
-                <Label>Repeat Penalty</Label>
-                <div className="flex items-center gap-3 mt-2">
-                  <Slider
-                    value={[settings.repeatPenalty]}
-                    onValueChange={([value]) => setSettings(prev => ({ ...prev, repeatPenalty: value }))}
-                    max={2}
-                    min={0}
-                    step={0.1}
-                    className="flex-1"
-                    data-testid="slider-repeat-penalty"
-                  />
-                  <span className="text-sm font-mono w-12 text-right">{settings.repeatPenalty}</span>
+                <Label>Repetition Prevention</Label>
+                <div className="space-y-2 mt-2">
+                  <div className="flex items-center gap-3">
+                    <Slider
+                      value={[settings.repeatPenalty]}
+                      onValueChange={([value]) => setSettings(prev => ({ ...prev, repeatPenalty: value }))}
+                      max={2}
+                      min={0}
+                      step={0.1}
+                      className="flex-1"
+                      data-testid="slider-repeat-penalty"
+                    />
+                    <span className="text-sm font-mono w-12 text-right">{settings.repeatPenalty}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>Can Repeat</span>
+                    <span>Avoid Repeating</span>
+                  </div>
                 </div>
               </div>
               
               <div>
-                <Label>Seed</Label>
+                <Label>Randomness Seed (Optional)</Label>
                 <Input
                   type="number"
-                  placeholder="Random"
+                  placeholder="Random each time"
                   value={settings.seed || ""}
                   onChange={(e) => setSettings(prev => ({ ...prev, seed: e.target.value ? parseInt(e.target.value) as any : null }))}
                   className="mt-2"
                   data-testid="input-seed"
                 />
+                <p className="text-xs text-muted-foreground mt-1">Set for repeatable responses</p>
               </div>
               
               <div>
-                <Label>Stop Sequences</Label>
+                <Label>Stop Words (Optional)</Label>
                 <Input
                   placeholder="e.g., ###, END"
                   value={settings.stopSequences}
@@ -251,6 +271,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   className="mt-2"
                   data-testid="input-stop-sequences"
                 />
+                <p className="text-xs text-muted-foreground mt-1">Words that end the response</p>
               </div>
             </div>
           </section>
@@ -261,18 +282,18 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           <section>
             <div className="flex items-center gap-2 mb-4">
               <Zap className="w-5 h-5 text-accent" />
-              <h3 className="text-lg font-semibold">Hierarchical Memory</h3>
+              <h3 className="text-lg font-semibold">Conversation Memory</h3>
             </div>
             
             <div className="space-y-3 mb-4">
               <p className="text-sm text-muted-foreground">
-                The hierarchical memory system keeps recent messages in full and summarizes older conversations into tiers, allowing unlimited conversation history within a fixed token budget.
+                Controls how the AI remembers your conversation. Recent messages are kept in full, older messages are summarized to save memory.
               </p>
             </div>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div>
-                <Label>Raw Message Count</Label>
+                <Label>Recent Messages to Keep</Label>
                 <Input
                   type="number"
                   value={settings.rawMessageCount}
@@ -282,11 +303,11 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   className="mt-2"
                   data-testid="input-raw-message-count"
                 />
-                <p className="text-xs text-muted-foreground mt-1">Keep last N messages in full</p>
+                <p className="text-xs text-muted-foreground mt-1">Number of recent messages kept word-for-word</p>
               </div>
               
               <div>
-                <Label>Summary Frequency (turns)</Label>
+                <Label>Auto-Summarize After</Label>
                 <Input
                   type="number"
                   value={settings.summaryFrequency}
@@ -297,11 +318,11 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   className="mt-2"
                   data-testid="input-summary-frequency"
                 />
-                <p className="text-xs text-muted-foreground mt-1">Summarize every N turns</p>
+                <p className="text-xs text-muted-foreground mt-1">Creates summary after this many messages</p>
               </div>
               
               <div>
-                <Label>Token Budget</Label>
+                <Label>Memory Size</Label>
                 <Input
                   type="number"
                   value={settings.tokenBudget}
@@ -312,7 +333,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   className="mt-2"
                   data-testid="input-token-budget"
                 />
-                <p className="text-xs text-muted-foreground mt-1">Max tokens for context</p>
+                <p className="text-xs text-muted-foreground mt-1">Total memory available for conversation (higher = more context)</p>
               </div>
             </div>
           </section>
@@ -451,12 +472,18 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           <section>
             <div className="flex items-center gap-2 mb-4">
               <Database className="w-5 h-5 text-primary" />
-              <h3 className="text-lg font-semibold">RAG Configuration</h3>
+              <h3 className="text-lg font-semibold">Document Search</h3>
+            </div>
+            
+            <div className="space-y-3 mb-4">
+              <p className="text-sm text-muted-foreground">
+                Controls how uploaded documents are searched and used to answer your questions.
+              </p>
             </div>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div>
-                <Label>Chunk Size (tokens)</Label>
+                <Label>Document Piece Size</Label>
                 <Input
                   type="number"
                   value={settings.chunkSize}
@@ -467,10 +494,11 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   className="mt-2"
                   data-testid="input-chunk-size"
                 />
+                <p className="text-xs text-muted-foreground mt-1">How documents are split for searching (lower = more precise)</p>
               </div>
               
               <div>
-                <Label>Chunk Overlap (tokens)</Label>
+                <Label>Context Overlap</Label>
                 <Input
                   type="number"
                   value={settings.chunkOverlap}
@@ -481,10 +509,11 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   className="mt-2"
                   data-testid="input-chunk-overlap"
                 />
+                <p className="text-xs text-muted-foreground mt-1">How much pieces overlap (prevents missing context)</p>
               </div>
               
               <div>
-                <Label>Top K Results</Label>
+                <Label>Documents to Retrieve</Label>
                 <Input
                   type="number"
                   value={settings.topKResults}
@@ -494,22 +523,30 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   className="mt-2"
                   data-testid="input-top-k-results"
                 />
+                <p className="text-xs text-muted-foreground mt-1">How many document pieces to use per answer</p>
               </div>
               
               <div>
-                <Label>Similarity Threshold</Label>
-                <div className="flex items-center gap-3 mt-2">
-                  <Slider
-                    value={[settings.similarityThreshold]}
-                    onValueChange={([value]) => setSettings(prev => ({ ...prev, similarityThreshold: value }))}
-                    max={1}
-                    min={0}
-                    step={0.05}
-                    className="flex-1"
-                    data-testid="slider-similarity-threshold"
-                  />
-                  <span className="text-sm font-mono w-12 text-right">{settings.similarityThreshold}</span>
+                <Label>Match Accuracy</Label>
+                <div className="space-y-2 mt-2">
+                  <div className="flex items-center gap-3">
+                    <Slider
+                      value={[settings.similarityThreshold]}
+                      onValueChange={([value]) => setSettings(prev => ({ ...prev, similarityThreshold: value }))}
+                      max={1}
+                      min={0}
+                      step={0.05}
+                      className="flex-1"
+                      data-testid="slider-similarity-threshold"
+                    />
+                    <span className="text-sm font-mono w-12 text-right">{settings.similarityThreshold}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>Related Content</span>
+                    <span>Exact Match</span>
+                  </div>
                 </div>
+                <p className="text-xs text-muted-foreground mt-1">How closely documents must match your question</p>
               </div>
             </div>
           </section>
