@@ -60,8 +60,8 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
   });
 
   const isOnline = networkStatus?.online ?? true;
-  const hasOpenRouterKey = settings.some(s => s.key === "openrouter_api_key" && s.value);
-  const hasRemoteUrl = settings.some(s => s.key === "remote_ollama_url" && s.value);
+  const hasOpenRouterKey = settings.some(s => s.key === "openrouter_api_key" && s.value && s.value !== "");
+  const hasRemoteUrl = settings.some(s => s.key === "remote_ollama_url" && s.value && s.value !== "");
 
   const availableModels = models.filter(model => model.isAvailable);
 
@@ -226,7 +226,7 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
             data-testid={`card-model-${model.name}`}
           >
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h4 className="text-sm font-medium truncate">{model.name}</h4>
                 {model.provider === "huggingface" && (
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-700 dark:text-orange-300 border border-orange-500/30 shrink-0">
@@ -234,9 +234,16 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
                   </span>
                 )}
                 {model.provider === "openrouter" && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-700 dark:text-blue-300 border border-blue-500/30 shrink-0">
-                    OR
-                  </span>
+                  <>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-700 dark:text-blue-300 border border-blue-500/30 shrink-0">
+                      OR
+                    </span>
+                    {model.parameters?.brand && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/30 shrink-0">
+                        {model.parameters.brand}
+                      </span>
+                    )}
+                  </>
                 )}
               </div>
               <p className="text-xs text-muted-foreground mt-0.5 capitalize">{model.provider}</p>

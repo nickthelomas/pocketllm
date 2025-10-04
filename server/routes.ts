@@ -525,15 +525,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 provider: "openrouter",
                 isAvailable: true,
                 parameters: { 
+                  brand: orModel.brand,
                   pricing: orModel.pricing,
                   context_length: orModel.context_length 
                 },
               });
             } else {
               // Update existing model to mark as available
-              await storage.updateModel(orModel.name, {
+              await storage.updateModel(existing.id, {
                 isAvailable: true,
                 parameters: { 
+                  brand: orModel.brand,
                   pricing: orModel.pricing,
                   context_length: orModel.context_length 
                 },

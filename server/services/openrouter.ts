@@ -53,6 +53,21 @@ export class OpenRouterService {
   private baseUrl: string = "https://openrouter.ai/api/v1";
   private apiKey: string | null = null;
 
+  private extractBrand(modelId: string): string {
+    // OpenRouter model IDs follow pattern: company/model-name
+    // Extract the company/brand from the model ID
+    const parts = modelId.split('/');
+    if (parts.length >= 2) {
+      const brandSlug = parts[0];
+      // Handle hyphenated/underscored brand names (e.g., "agentica-org" -> "Agentica Org")
+      const brandWords = brandSlug.split(/[-_]/).map(word => 
+        word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+      );
+      return brandWords.join(' ');
+    }
+    return 'Unknown';
+  }
+
   setApiKey(apiKey: string) {
     this.apiKey = apiKey;
   }
@@ -64,6 +79,7 @@ export class OpenRouterService {
   async fetchOpenRouterModels(): Promise<Array<{
     name: string;
     provider: string;
+    brand: string;
     pricing: { prompt: string; completion: string };
     contextLength: number;
   }>> {
@@ -85,6 +101,7 @@ export class OpenRouterService {
       return data.data.map((model) => ({
         name: model.id,
         provider: "openrouter",
+        brand: this.extractBrand(model.id),
         pricing: {
           prompt: model.pricing.prompt,
           completion: model.pricing.completion,
