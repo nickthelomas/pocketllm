@@ -20,7 +20,28 @@ async function getOllamaService() {
 // File upload configuration
 const upload = multer({ 
   storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 } // 50MB limit
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
+  fileFilter: (req, file, cb) => {
+    const allowedMimes = [
+      'application/pdf',
+      'application/x-pdf', // Alternative PDF MIME type
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/msword', // DOC files
+      'text/plain',
+      'text/csv',
+      'application/json',
+      'application/octet-stream' // Sometimes browsers send this for binary files
+    ];
+    
+    const allowedExtensions = ['.pdf', '.docx', '.doc', '.txt', '.csv', '.json'];
+    const ext = file.originalname.toLowerCase().substring(file.originalname.lastIndexOf('.'));
+    
+    if (allowedMimes.includes(file.mimetype) || allowedExtensions.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`File type not allowed: ${file.mimetype} (${ext})`));
+    }
+  }
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -1053,35 +1074,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { originalname, mimetype, size, buffer } = req.file;
       
+      // Get file extension for fallback type checking
+      const ext = originalname.toLowerCase().substring(originalname.lastIndexOf('.'));
+      
       // Extract text content based on file type
       let content = "";
+      let actualMimetype = mimetype;
       
-      if (mimetype === "application/pdf") {
+      // Handle PDF files
+      if (mimetype === "application/pdf" || mimetype === "application/x-pdf" || 
+          (mimetype === "application/octet-stream" && ext === ".pdf")) {
         // Parse PDF - pdf-parse only works with CommonJS so we use createRequire
         const Module = await import('node:module');
         const require = Module.createRequire(import.meta.url);
         const pdfParse = require("pdf-parse");
         const pdfData = await pdfParse(buffer);
         content = pdfData.text;
-      } else if (mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+        actualMimetype = "application/pdf";
+      } 
+      // Handle DOCX/DOC files
+      else if (mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || 
+               mimetype === "application/msword" || 
+               (mimetype === "application/octet-stream" && (ext === ".docx" || ext === ".doc"))) {
         // Parse DOCX
         const mammoth = await import("mammoth");
         const result = await mammoth.extractRawText({ buffer });
         content = result.value;
-      } else if (mimetype === "text/plain") {
+        actualMimetype = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+      } 
+      // Handle text files
+      else if (mimetype === "text/plain" || 
+               (mimetype === "application/octet-stream" && ext === ".txt")) {
         content = buffer.toString("utf-8");
-      } else if (mimetype === "application/json") {
+        actualMimetype = "text/plain";
+      } 
+      // Handle JSON files
+      else if (mimetype === "application/json" || 
+               (mimetype === "application/octet-stream" && ext === ".json")) {
         content = buffer.toString("utf-8");
-      } else if (mimetype === "text/csv") {
+        actualMimetype = "application/json";
+      } 
+      // Handle CSV files
+      else if (mimetype === "text/csv" || 
+               (mimetype === "application/octet-stream" && ext === ".csv")) {
         content = buffer.toString("utf-8");
-      } else {
-        return res.status(400).json({ error: `Unsupported file type: ${mimetype}` });
+        actualMimetype = "text/csv";
+      } 
+      else {
+        return res.status(400).json({ error: `Unsupported file type: ${mimetype} (${ext})` });
       }
 
       // Create document
       const document = await storage.createRagDocument({
         fileName: originalname,
-        fileType: mimetype,
+        fileType: actualMimetype,
         fileSize: size,
         content,
         chunksCount: 0, // Will be updated after chunking
