@@ -607,12 +607,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const totalSize = parseInt(response.headers.get('content-length') || '0');
           let downloadedSize = 0;
 
-          // Create temp file path
-          const tempDir = '/tmp/ollama-models';
-          const { mkdirSync, createWriteStream, unlinkSync } = await import('fs');
+          // Create temp file path (use project directory for Termux compatibility)
+          const { mkdirSync, createWriteStream, unlinkSync, existsSync } = await import('fs');
           const { join } = await import('path');
           
-          mkdirSync(tempDir, { recursive: true });
+          const tempDir = join(process.cwd(), '.temp-models');
+          if (!existsSync(tempDir)) {
+            mkdirSync(tempDir, { recursive: true, mode: 0o755 });
+          }
           const filename = downloadUrl.split('/').pop() || 'model.gguf';
           const tempFilePath = join(tempDir, filename);
           
