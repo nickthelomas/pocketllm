@@ -48,17 +48,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       health.database.message = err instanceof Error ? err.message : "Database connection failed";
     }
 
-    // Check Ollama connection
+    // Check Ollama connection AND model availability
     try {
       const ollama = await getOllamaService();
-      const models = await ollama.listModels();
-      const loadedModel = ollama.getLoadedModel();
+      const isOnline = await ollama.isAvailable();
       
-      health.ollama.status = "ok";
-      if (loadedModel) {
-        health.ollama.message = `Ollama connected - ${models.length} models available - Active: ${loadedModel}`;
+      if (!isOnline) {
+        health.ollama.status = "error";
+        health.ollama.message = "Ollama server not responding";
       } else {
-        health.ollama.message = `Ollama connected - ${models.length} models available - No model loaded`;
+        const models = await ollama.listModels();
+        const loadedModel = ollama.getLoadedModel();
+        
+        // Only mark as OK if Ollama is online AND has models
+        if (models.length === 0) {
+          health.ollama.status = "warning";
+          health.ollama.message = "Ollama connected but no models available - pull a model to get started";
+        } else if (loadedModel) {
+          // Verify the loaded model actually exists in the list
+          const modelExists = models.some(m => m.name === loadedModel);
+          if (modelExists) {
+            health.ollama.status = "ok";
+            health.ollama.message = `Ollama connected - ${models.length} models available - Active: ${loadedModel}`;
+          } else {
+            health.ollama.status = "warning";
+            health.ollama.message = `Ollama connected - ${models.length} models available - Model "${loadedModel}" not found`;
+          }
+        } else {
+          health.ollama.status = "ok";
+          health.ollama.message = `Ollama connected - ${models.length} models available - No model loaded`;
+        }
       }
     } catch (err) {
       health.ollama.status = "error";
@@ -302,7 +321,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Stream response from Ollama
       let fullResponse = "";
-      const modelName = model || "llama3.2:3b-instruct";
+      const modelName = model || "llama3.2:1b";
       
       const ollama = await getOllamaService();
       
@@ -326,7 +345,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (ollamaError) {
         console.error("Ollama error:", ollamaError);
         
-        const errorMessage = "⚠️ **Ollama Not Available**\n\nThe local Ollama server is not running. This app requires a local Ollama instance for LLM inference.\n\n**To fix this:**\n1. Install Ollama from https://ollama.ai\n2. Start Ollama: `ollama serve`\n3. Pull a model: `ollama pull llama3.2:3b-instruct`\n4. Refresh this page\n\n**Note:** This is a strictly local-only LLM app with zero cloud dependencies. All inference happens on your device.";
+        const errorMessage = "⚠️ **Ollama Not Available**\n\nThe local Ollama server is not running. This app requires a local Ollama instance for LLM inference.\n\n**To fix this:**\n1. Install Ollama from https://ollama.ai\n2. Start Ollama: `ollama serve`\n3. Pull a model: `ollama pull llama3.2:1b`\n4. Refresh this page\n\n**Note:** This is a strictly local-only LLM app with zero cloud dependencies. All inference happens on your device.";
         
         fullResponse = errorMessage;
         res.write(`data: ${JSON.stringify({ token: errorMessage, fullResponse: errorMessage })}\n\n`);
@@ -440,12 +459,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const catalog = [
-        { name: "llama3.2:3b-instruct", size: "2.0GB", description: "Fast and efficient 3B parameter model" },
-        { name: "llama3.2:1b", size: "1.3GB", description: "Smallest Llama 3.2 model" },
-        { name: "mistral:7b-instruct-v0.2", size: "4.1GB", description: "Mistral 7B instruct model" },
-        { name: "phi3:mini", size: "2.3GB", description: "Microsoft Phi-3 mini model" },
-        { name: "qwen2:1.5b", size: "0.9GB", description: "Qwen 1.5B chat model" },
-        { name: "gemma:2b", size: "1.4GB", description: "Google Gemma 2B model" },
+        { name: "qwen2:1.5b", size: "0.9GB", description: "⚡ Ultra-fast 1.5B model - best for phones" },
+        { name: "llama3.2:1b", size: "1.3GB", description: "⭐ Recommended - smallest Llama 3.2" },
+        { name: "gemma:2b", size: "1.4GB", description: "Google Gemma 2B - balanced speed/quality" },
+        { name: "llama3.2:3b-instruct", size: "2.0GB", description: "Llama 3.2 3B - better quality, slower" },
+        { name: "phi3:mini", size: "2.3GB", description: "⚠️ Phi-3 mini - may be slow on phones" },
+        { name: "mistral:7b-instruct-v0.2", size: "4.1GB", description: "Mistral 7B - requires strong hardware" },
       ];
       
       res.json({ catalog, available: true });

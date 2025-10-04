@@ -60,24 +60,52 @@ export class OllamaService {
   async loadModel(modelName: string): Promise<void> {
     try {
       console.log(`🔄 Loading model: ${modelName}...`);
+      
+      // First verify the model exists in Ollama
+      const models = await this.listModels();
+      const modelExists = models.some(m => m.name === modelName);
+      if (!modelExists) {
+        throw new Error(`Model "${modelName}" not found in Ollama. Please pull it first.`);
+      }
+      
+      // Warm up the model with a test prompt and validate response
       const response = await fetch(`${this.baseUrl}/api/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: modelName,
-          prompt: "",
+          prompt: "test",
           stream: false
         }),
+        signal: AbortSignal.timeout(30000), // 30s timeout
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to load model: ${response.statusText}`);
+        const errorText = await response.text();
+        throw new Error(`Failed to load model: ${response.statusText} - ${errorText}`);
+      }
+
+      // Validate the response actually worked
+      const result = await response.json();
+      if (!result.response && result.response !== "") {
+        throw new Error(`Model loaded but returned invalid response format`);
       }
 
       this.loadedModel = modelName;
       console.log(`✅ Model loaded and ready: ${modelName}`);
     } catch (error) {
+      this.loadedModel = null; // Clear loaded model on failure
       console.error(`❌ Failed to load model ${modelName}:`, error);
+      
+      // Provide more helpful error messages
+      if (error instanceof Error) {
+        if (error.message.includes("timeout") || error.message.includes("AbortError")) {
+          throw new Error(`Model "${modelName}" took too long to load (>30s). Try a smaller model.`);
+        }
+        if (error.message.includes("ECONNREFUSED")) {
+          throw new Error(`Cannot connect to Ollama server. Is it running?`);
+        }
+      }
       throw error;
     }
   }

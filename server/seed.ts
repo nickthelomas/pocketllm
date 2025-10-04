@@ -7,29 +7,29 @@ async function seed() {
   const existingModels = await dbStorage.getModels();
   
   if (existingModels.length === 0) {
-    // Add default local models
+    // Add default local models (optimized for mobile - smallest first)
     await dbStorage.createModel({
-      name: "llama3.2:3b-instruct",
+      name: "llama3.2:1b",
       provider: "ollama",
       isAvailable: true,
-      parameters: null,
+      parameters: { size: 1300000000 }, // 1.3GB for sorting
     });
 
     await dbStorage.createModel({
-      name: "mistral:7b-instruct-v0.2",
+      name: "qwen2:1.5b",
       provider: "ollama",
       isAvailable: true,
-      parameters: null,
+      parameters: { size: 900000000 }, // 0.9GB
     });
 
     await dbStorage.createModel({
-      name: "qwen2.5:7b-instruct",
+      name: "gemma:2b",
       provider: "ollama",
       isAvailable: true,
-      parameters: null,
+      parameters: { size: 1400000000 }, // 1.4GB
     });
 
-    console.log("✓ Seeded 3 default models");
+    console.log("✓ Seeded 3 mobile-optimized models");
   } else {
     console.log(`✓ Database already has ${existingModels.length} models`);
   }

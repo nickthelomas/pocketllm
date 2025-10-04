@@ -9,7 +9,7 @@ interface SummarizationConfig {
 export class SummarizationService {
   private config: SummarizationConfig;
 
-  constructor(config: SummarizationConfig = { model: "llama3.2:3b-instruct", maxTokens: 500 }) {
+  constructor(config: SummarizationConfig = { model: "llama3.2:1b", maxTokens: 500 }) {
     this.config = config;
   }
 

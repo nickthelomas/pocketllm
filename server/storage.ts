@@ -70,11 +70,11 @@ export class MemStorage implements IStorage {
   private conversationSummaries: Map<string, ConversationSummary> = new Map();
 
   constructor() {
-    // Initialize with default local-only models (Ollama)
+    // Initialize with default local-only models (Ollama) - optimized for mobile
     const defaultModels: InsertModel[] = [
-      { name: "llama3.2:3b-instruct", provider: "ollama", isAvailable: true, parameters: null },
-      { name: "mistral:7b-instruct-v0.2", provider: "ollama", isAvailable: true, parameters: null },
-      { name: "qwen2.5:7b-instruct", provider: "ollama", isAvailable: true, parameters: null },
+      { name: "llama3.2:1b", provider: "ollama", isAvailable: true, parameters: { size: 1300000000 } },
+      { name: "qwen2:1.5b", provider: "ollama", isAvailable: true, parameters: { size: 900000000 } },
+      { name: "gemma:2b", provider: "ollama", isAvailable: true, parameters: { size: 1400000000 } },
     ];
 
     defaultModels.forEach(model => {

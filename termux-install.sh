@@ -79,18 +79,23 @@ log "Step 7/10: Creating data directory..."
 mkdir -p "$INSTALL_DIR/data"
 log "Using MemStorage (in-memory) - defaults are pre-configured"
 
-log "Step 8/10: Pulling default Ollama model (llama3.2:3b-instruct)..."
+log "Step 8/10: Pulling default Ollama model (llama3.2:1b - smallest, fastest)..."
 # Start Ollama in background
 termux-wake-lock
 ollama serve > "$INSTALL_DIR/data/ollama.log" 2>&1 &
 OLLAMA_PID=$!
 sleep 5
 
-# Pull small model
-if ollama pull llama3.2:3b-instruct; then
-    log "Default model pulled successfully"
+# Pull smallest model (best for phones)
+if ollama pull llama3.2:1b; then
+    log "Default model pulled successfully (1.3GB)"
 else
-    warn "Failed to pull model (will retry on first startup)"
+    warn "Failed to pull model. Possible causes:"
+    warn "  - No internet connection"
+    warn "  - Ollama registry unavailable"
+    warn "  - Insufficient storage"
+    warn ""
+    warn "You can pull manually later with: ollama pull llama3.2:1b"
 fi
 
 # Stop Ollama for now
