@@ -135,6 +135,8 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
         title: "Model Ready",
         description: data.message,
       });
+      // Invalidate health status to show the loaded model
+      queryClient.invalidateQueries({ queryKey: ["/api/system/health"] });
     },
     onError: (error) => {
       console.error("Model load failed:", error);
