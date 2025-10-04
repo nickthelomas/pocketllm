@@ -43,6 +43,7 @@ interface OllamaGenerateChunk {
 
 export class OllamaService {
   private baseUrl: string;
+  private loadedModel: string | null = null;
 
   constructor(baseUrl: string = "http://127.0.0.1:11434") {
     this.baseUrl = baseUrl;
@@ -50,6 +51,35 @@ export class OllamaService {
 
   setBaseUrl(baseUrl: string) {
     this.baseUrl = baseUrl;
+  }
+
+  getLoadedModel(): string | null {
+    return this.loadedModel;
+  }
+
+  async loadModel(modelName: string): Promise<void> {
+    try {
+      console.log(`🔄 Loading model: ${modelName}...`);
+      const response = await fetch(`${this.baseUrl}/api/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: modelName,
+          prompt: "",
+          stream: false
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to load model: ${response.statusText}`);
+      }
+
+      this.loadedModel = modelName;
+      console.log(`✅ Model loaded and ready: ${modelName}`);
+    } catch (error) {
+      console.error(`❌ Failed to load model ${modelName}:`, error);
+      throw error;
+    }
   }
 
   async isAvailable(): Promise<boolean> {

@@ -52,8 +52,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const ollama = await getOllamaService();
       const models = await ollama.listModels();
+      const loadedModel = ollama.getLoadedModel();
+      
       health.ollama.status = "ok";
-      health.ollama.message = `Ollama connected - ${models.length} models available`;
+      if (loadedModel) {
+        health.ollama.message = `Ollama connected - ${models.length} models available - Active: ${loadedModel}`;
+      } else {
+        health.ollama.message = `Ollama connected - ${models.length} models available - No model loaded`;
+      }
     } catch (err) {
       health.ollama.status = "error";
       health.ollama.message = err instanceof Error ? err.message : "Ollama connection failed";
@@ -492,6 +498,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       res.write(`data: ${JSON.stringify({ error: error instanceof Error ? error.message : String(error) })}\n\n`);
       res.end();
+    }
+  });
+
+  app.post("/api/models/load", async (req, res) => {
+    try {
+      const { name } = req.body;
+      if (!name) {
+        return res.status(400).json({ error: "Model name is required" });
+      }
+
+      const ollama = await getOllamaService();
+      await ollama.loadModel(name);
+      
+      res.json({ 
+        success: true, 
+        model: name,
+        message: `Model ${name} loaded and ready` 
+      });
+    } catch (error) {
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : String(error),
+        message: "Failed to load model"
+      });
     }
   });
 
