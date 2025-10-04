@@ -363,16 +363,12 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
           </TabsTrigger>
           <TabsTrigger 
             value="cloud" 
-            disabled={!isOnline || !hasOpenRouterKey}
-            className="disabled:opacity-50"
             data-testid="tab-cloud"
           >
             Cloud
           </TabsTrigger>
           <TabsTrigger 
             value="remote" 
-            disabled={!hasRemoteUrl}
-            className="disabled:opacity-50"
             data-testid="tab-remote"
           >
             Remote
@@ -508,30 +504,31 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
                 </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="local" className="flex-1 overflow-y-auto mt-3 pr-2">
-                {pullProgress ? (
-                  <div className="space-y-3">
-                    <div className="p-4 bg-primary/10 border border-primary/20 rounded-lg">
-                      <p className="text-sm font-medium mb-2">{pullProgress.status}</p>
-                      <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
-                        <div 
-                          className="bg-primary h-full transition-all duration-300"
-                          style={{ width: `${pullProgress.progress}%` }}
-                        />
+              <TabsContent value="local" className="flex-1 mt-3">
+                <div className="max-h-[50vh] overflow-y-auto pr-2">
+                  {pullProgress ? (
+                    <div className="space-y-3">
+                      <div className="p-4 bg-primary/10 border border-primary/20 rounded-lg">
+                        <p className="text-sm font-medium mb-2">{pullProgress.status}</p>
+                        <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
+                          <div 
+                            className="bg-primary h-full transition-all duration-300"
+                            style={{ width: `${pullProgress.progress}%` }}
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-2">{pullProgress.progress}% complete</p>
                       </div>
-                      <p className="text-xs text-muted-foreground mt-2">{pullProgress.progress}% complete</p>
+                      <p className="text-xs text-center text-muted-foreground">
+                        Downloading model... Please keep this dialog open.
+                      </p>
                     </div>
-                    <p className="text-xs text-center text-muted-foreground">
-                      Downloading model... Please keep this dialog open.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <p className="text-sm text-muted-foreground">
-                      Select a model to download:
-                    </p>
-                    
-                    {catalogLocalModels.map((model: CatalogModel) => (
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-sm text-muted-foreground">
+                        Select a model to download:
+                      </p>
+                      
+                      {catalogLocalModels.map((model: CatalogModel) => (
                       <div 
                         key={model.name}
                         className="flex items-center justify-between p-3 border border-border rounded-lg hover:bg-accent/50 transition-colors"
@@ -560,11 +557,13 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
                         </div>
                       </div>
                     ))}
-                  </div>
-                )}
+                    </div>
+                  )}
+                </div>
               </TabsContent>
 
-              <TabsContent value="cloud" className="flex-1 overflow-y-auto mt-3 pr-2">
+              <TabsContent value="cloud" className="flex-1 mt-3">
+                <div className="max-h-[50vh] overflow-y-auto pr-2">
                 {!hasOpenRouterKey ? (
                   <div className="p-4 bg-muted/50 border border-border rounded-lg">
                     <p className="text-sm text-muted-foreground">
@@ -626,11 +625,13 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
                         </div>
                       </div>
                     ))}
-                  </div>
-                )}
+                    </div>
+                  )}
+                </div>
               </TabsContent>
 
-              <TabsContent value="remote" className="flex-1 overflow-y-auto mt-3 pr-2">
+              <TabsContent value="remote" className="flex-1 mt-3">
+                <div className="max-h-[50vh] overflow-y-auto pr-2">
                 {!hasRemoteUrl ? (
                   <div className="p-4 bg-muted/50 border border-border rounded-lg">
                     <p className="text-sm text-muted-foreground">
@@ -681,8 +682,9 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
                         </div>
                       </div>
                     ))}
-                  </div>
-                )}
+                    </div>
+                  )}
+                </div>
               </TabsContent>
             </Tabs>
           )}

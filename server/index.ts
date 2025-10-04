@@ -49,16 +49,15 @@ app.use((req, res, next) => {
 // Auto-pull embedding model on first launch if not available
 async function ensureEmbeddingModel() {
   try {
-    const { getOllamaService } = await import('./services/ollama.js');
-    const ollama = await getOllamaService();
-    const isAvailable = await ollama.isAvailable();
+    const { ollamaService } = await import('./services/ollama.js');
+    const isAvailable = await ollamaService.isAvailable();
     
     if (!isAvailable) {
       log("Ollama not available, skipping embedding model check");
       return;
     }
 
-    const models = await ollama.listModels();
+    const models = await ollamaService.listModels();
     const hasEmbeddingModel = models.some((m: any) => 
       m.name.includes('nomic-embed-text') || 
       m.name.includes('mxbai-embed-large') ||
@@ -68,7 +67,7 @@ async function ensureEmbeddingModel() {
     if (!hasEmbeddingModel) {
       log("No embedding model found, auto-pulling nomic-embed-text...");
       try {
-        for await (const status of ollama.pullModel('nomic-embed-text')) {
+        for await (const status of ollamaService.pullModel('nomic-embed-text')) {
           if (status.status) {
             log(`Embedding model pull: ${status.status}`);
           }
