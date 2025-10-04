@@ -184,6 +184,11 @@ npm run dev
   - Improved termux-install.sh - added Ollama health check retries (30s timeout), version validation, better error handling
   - Added HuggingFace model source - catalog now shows both Ollama and HuggingFace models with visual badges (HF models pending full implementation)
   - Better error handling for network/manifest failures during model pull
+- ✅ **Critical Termux deployment fixes (Oct 2025)**:
+  - Fixed termux-start.sh to pull llama3.2:1b (1.3GB) instead of incorrect 3b-instruct (2GB)
+  - Changed backend to run in development mode with `npm run dev` instead of production build
+  - Ensures USE_MEMSTORAGE=true is properly respected without DATABASE_URL errors
+  - Removed unnecessary production build step from Termux startup
 
 ## Mobile Deployment (APK)
 

@@ -102,9 +102,9 @@ fi
 
 # Ensure default model is available
 log "Checking for default model..."
-if ! ollama list | grep -q "llama3.2:3b-instruct"; then
-    warn "Default model not found, pulling llama3.2:3b-instruct..."
-    ollama pull llama3.2:3b-instruct || warn "Model pull failed, continuing..."
+if ! ollama list | grep -q "llama3.2:1b"; then
+    warn "Default model not found, pulling llama3.2:1b..."
+    ollama pull llama3.2:1b || warn "Model pull failed, continuing..."
 fi
 
 # Check if backend already running
@@ -113,18 +113,12 @@ if pgrep -f "npm.*start" > /dev/null || pgrep -f "node.*dist/index" > /dev/null;
 else
     log "Starting Express backend..."
     cd "$SCRIPT_DIR"
-    export NODE_ENV=production
+    export NODE_ENV=development
     export USE_MEMSTORAGE=true
-    
-    # Build if dist doesn't exist
-    if [ ! -f "$SCRIPT_DIR/dist/index.js" ]; then
-        warn "Production build not found, building now..."
-        npm run build || error "Build failed"
-    fi
     
     log "Using MemStorage (offline-ready, defaults pre-configured)"
     
-    npm start > "$BACKEND_LOG" 2>&1 &
+    npm run dev > "$BACKEND_LOG" 2>&1 &
     BACKEND_PID=$!
     echo "$BACKEND_PID" >> "$PID_FILE"
     log "Backend PID: $BACKEND_PID"
