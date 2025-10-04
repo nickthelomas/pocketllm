@@ -562,14 +562,151 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (source === "huggingface") {
         // HuggingFace models: Download GGUF and import to Ollama
-        // Note: This is a simplified implementation
-        // In production, you'd want proper GGUF download and Modelfile creation
-        console.log(`❌ HuggingFace import not implemented`);
-        res.write(`data: ${JSON.stringify({ 
-          error: "HuggingFace model import not yet implemented. Coming soon!" 
-        })}\n\n`);
-        res.end();
-        return;
+        const { downloadUrl } = req.body;
+        if (!downloadUrl) {
+          res.write(`data: ${JSON.stringify({ 
+            error: "Download URL is required for HuggingFace models" 
+          })}\n\n`);
+          res.end();
+          return;
+        }
+
+        // Validate downloadUrl is from HuggingFace (HTTPS only)
+        try {
+          const url = new URL(downloadUrl);
+          const hostname = url.hostname.toLowerCase();
+          
+          // Only allow HTTPS
+          if (url.protocol !== 'https:') {
+            throw new Error('Only HTTPS downloads are allowed');
+          }
+          
+          // Only allow huggingface.co and *.huggingface.co subdomains
+          const isValidHF = hostname === 'huggingface.co' || hostname.endsWith('.huggingface.co');
+          if (!isValidHF) {
+            throw new Error('Invalid download source');
+          }
+        } catch (error) {
+          res.write(`data: ${JSON.stringify({ 
+            error: error instanceof Error ? error.message : "Download URL must be HTTPS from huggingface.co" 
+          })}\n\n`);
+          res.end();
+          return;
+        }
+
+        console.log(`🤗 HuggingFace import: ${name}`);
+        console.log(`📥 Downloading from: ${downloadUrl}`);
+
+        try {
+          // Download GGUF file with progress tracking
+          const response = await fetch(downloadUrl);
+          if (!response.ok) {
+            throw new Error(`Failed to download: ${response.statusText}`);
+          }
+
+          const totalSize = parseInt(response.headers.get('content-length') || '0');
+          let downloadedSize = 0;
+
+          // Create temp file path
+          const tempDir = '/tmp/ollama-models';
+          const { mkdirSync, createWriteStream, unlinkSync } = await import('fs');
+          const { join } = await import('path');
+          
+          mkdirSync(tempDir, { recursive: true });
+          const filename = downloadUrl.split('/').pop() || 'model.gguf';
+          const tempFilePath = join(tempDir, filename);
+          
+          // Stream download with progress
+          const fileStream = createWriteStream(tempFilePath);
+          const reader = response.body?.getReader();
+          
+          if (!reader) throw new Error('No response body');
+
+          res.write(`data: ${JSON.stringify({ progress: 0, status: 'downloading' })}\n\n`);
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            fileStream.write(value);
+            downloadedSize += value.length;
+            const progress = totalSize > 0 ? (downloadedSize / totalSize) * 100 : 0;
+            
+            res.write(`data: ${JSON.stringify({ 
+              progress: Math.round(progress), 
+              status: `downloading ${(downloadedSize / 1024 / 1024).toFixed(1)}MB / ${(totalSize / 1024 / 1024).toFixed(1)}MB` 
+            })}\n\n`);
+          }
+
+          fileStream.end();
+          console.log(`✅ Download complete: ${tempFilePath}`);
+
+          // Create Modelfile
+          res.write(`data: ${JSON.stringify({ progress: 100, status: 'creating modelfile' })}\n\n`);
+          
+          const { writeFileSync } = await import('fs');
+          const modelfilePath = join(tempDir, 'Modelfile');
+          const modelfile = `FROM ${tempFilePath}\n`;
+          writeFileSync(modelfilePath, modelfile);
+          console.log(`📝 Modelfile created: ${modelfilePath}`);
+
+          // Import to Ollama using ollama create
+          res.write(`data: ${JSON.stringify({ progress: 100, status: 'importing to ollama' })}\n\n`);
+          
+          const { execFile } = await import('child_process');
+          const { promisify } = await import('util');
+          const execFileAsync = promisify(execFile);
+
+          // Sanitize model name: only allow alphanumeric, hyphens, underscores, and dots
+          const ollamaName = name
+            .split(':')[0]
+            .replace(/[^a-zA-Z0-9._-]/g, '-')
+            .toLowerCase()
+            .slice(0, 64); // Limit length
+          
+          console.log(`🔄 Running: ollama create ${ollamaName} -f ${modelfilePath}`);
+          
+          // Use execFile to prevent command injection
+          const { stdout, stderr } = await execFileAsync('ollama', ['create', ollamaName, '-f', modelfilePath]);
+          if (stderr) console.log(`Ollama stderr: ${stderr}`);
+          console.log(`Ollama stdout: ${stdout}`);
+
+          // Clean up temp files
+          unlinkSync(tempFilePath);
+          unlinkSync(modelfilePath);
+          console.log(`🧹 Cleanup complete`);
+
+          // Verify and add to storage
+          const ollamaModels = await ollama.listModels();
+          const modelInOllama = ollamaModels.some(m => m.name === ollamaName);
+          
+          if (!modelInOllama) {
+            throw new Error("Model import completed but model not found in Ollama");
+          }
+
+          const existingModels = await storage.getModels();
+          const modelExists = existingModels.some(m => m.name === ollamaName);
+          
+          if (!modelExists) {
+            await storage.createModel({
+              name: ollamaName,
+              provider: "ollama",
+              isAvailable: true,
+              parameters: { source: "huggingface" },
+            });
+          }
+
+          res.write(`data: [DONE]\n\n`);
+          res.end();
+          return;
+        } catch (error) {
+          console.error(`❌ HuggingFace import error:`, error);
+          res.write(`data: ${JSON.stringify({ 
+            error: error instanceof Error ? error.message : String(error) 
+          })}\n\n`);
+          res.end();
+          return;
+        }
       }
 
       // Ollama registry pull (default)

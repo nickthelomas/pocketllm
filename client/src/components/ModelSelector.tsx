@@ -123,7 +123,7 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
   });
 
   const pullModelMutation = useMutation({
-    mutationFn: async ({ name, source }: { name: string; source: string }) => {
+    mutationFn: async ({ name, source, downloadUrl }: { name: string; source: string; downloadUrl?: string }) => {
       setIsPulling(true);
       setPullComplete(false);
       setPullError(null);
@@ -132,7 +132,7 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
       const response = await fetch("/api/models/pull", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, source }),
+        body: JSON.stringify({ name, source, downloadUrl }),
       });
 
       if (response.status === 503) {
@@ -381,7 +381,7 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
                         <span className="text-xs font-mono text-muted-foreground">{model.size}</span>
                         <Button
                           size="sm"
-                          onClick={() => pullModelMutation.mutate({ name: model.name, source: model.source })}
+                          onClick={() => pullModelMutation.mutate({ name: model.name, source: model.source, downloadUrl: model.downloadUrl })}
                           disabled={isPulling}
                           data-testid={`button-pull-${model.name}`}
                         >
