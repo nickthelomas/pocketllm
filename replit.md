@@ -10,6 +10,7 @@ Pocket LLM is a local-first, full-stack LLM application designed for mobile use 
   - Added OpenRouterService with streaming chat support
   - Model catalog with pricing transparency (displayed as $/1M tokens)
   - API key management in Settings UI
+  - **No Pull Required**: Cloud models instantly available after sync (no download needed)
   - Automatic network detection (Cloud tab greys out when offline)
   
 - **Remote Ollama Support**: 
@@ -24,13 +25,21 @@ Pocket LLM is a local-first, full-stack LLM application designed for mobile use 
 - **Enhanced Model Management UI**:
   - Multi-tab interface (Local/Cloud/Remote) in ModelSelector
   - Network status indicator with Wifi/WifiOff icons
+  - **Brand Categorization**: Purple badges show provider brand (Openai, Anthropic, Google, Meta, etc.)
   - Provider badges (HF for HuggingFace, OR for OpenRouter)
   - Settings fields for OpenRouter API key and Remote Ollama URL
+  - **Background Downloads**: HuggingFace models download in background, app remains usable
   
 - **Auto-Pull Embedding Models**: 
   - Server startup checks for embedding models (nomic-embed-text, mxbai-embed-large, all-minilm)
   - Automatically pulls nomic-embed-text if none found
   - Non-blocking background task with graceful failure handling
+
+### OpenRouter Workflow Improvements
+- **Instant Availability**: OpenRouter models marked as available immediately after sync (no pull step)
+- **Automatic Brand Extraction**: Extracts and formats brand names from model IDs (e.g., `agentica-org` → "Agentica Org")
+- **Upsert Logic**: Sync updates existing models to ensure availability and refresh metadata
+- **Settings Validation**: Fixed empty string checks to properly detect configured API keys
 
 ## User Preferences
 - Always prioritize local-only solutions
