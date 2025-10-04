@@ -23,14 +23,20 @@ A **strictly local-only** full-stack LLM application designed for phone use (web
 
 ### 1. Model Management
 - **Sync Models**: `/api/models/sync` - Auto-discovers models from Ollama + local directory with detailed metadata
-- **Pull Models**: `/api/models/pull` - Download models from Ollama registry with streaming progress
-- **Catalog Browser**: `/api/models/catalog` - Browse available models with sizes/descriptions before pulling
+- **Pull Models**: `/api/models/pull` - Download models from Ollama registry OR HuggingFace with streaming progress
+- **Catalog Browser**: `/api/models/catalog` - Browse available models from Ollama and HuggingFace with sizes/descriptions before pulling
+- **HuggingFace Integration**: Download quantized GGUF models directly from HuggingFace
+  - **Security**: HTTPS-only downloads from `huggingface.co` and `*.huggingface.co` subdomains
+  - **Auto-Import**: Downloads GGUF → Creates Modelfile → Imports to Ollama → Adds to database
+  - **Progress Tracking**: Real-time download progress in MB via SSE streaming
+  - **Command Safety**: Uses `execFile` with sanitized model names to prevent injection
 - **Auto-Selection**: Automatically selects smallest model on first launch
 - **Local Persistence**: Selected model saved to localStorage
 - **Validation**: Only allows selecting models that exist locally
 - **Offline-First**: Graceful degradation with clear error messages when Ollama unavailable
 - **Supported Providers**: 
   - `ollama` - Models from local Ollama server
+  - `huggingface` - GGUF models from HuggingFace (auto-imported to Ollama)
   - `local-file` - GGUF/GGML files in `./models` folder
 
 ### 2. Multi-Thread Chat
