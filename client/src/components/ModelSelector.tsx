@@ -61,8 +61,34 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
   useEffect(() => {
     if (selectedModel) {
       localStorage.setItem("selectedModel", selectedModel);
+      loadModelMutation.mutate(selectedModel);
     }
   }, [selectedModel]);
+
+  const loadModelMutation = useMutation({
+    mutationFn: async (modelName: string) => {
+      const response = await fetch("/api/models/load", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: modelName }),
+      });
+      if (!response.ok) {
+        throw new Error("Failed to load model");
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      console.log(`✅ ${data.message}`);
+    },
+    onError: (error) => {
+      console.error("Model load failed:", error);
+      toast({
+        title: "Model Load Failed",
+        description: error instanceof Error ? error.message : "Could not load model in Ollama",
+        variant: "destructive",
+      });
+    },
+  });
 
   const syncModelsMutation = useMutation({
     mutationFn: async () => {
