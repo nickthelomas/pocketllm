@@ -238,15 +238,21 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-700 dark:text-blue-300 border border-blue-500/30 shrink-0">
                       OR
                     </span>
-                    {model.parameters?.brand && (
+                    {(model.parameters as any)?.brand && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/30 shrink-0">
-                        {model.parameters.brand}
+                        {(model.parameters as any).brand}
                       </span>
                     )}
                   </>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground mt-0.5 capitalize">{model.provider}</p>
+              {model.provider === "openrouter" && (model.parameters as any)?.pricing ? (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  ${(parseFloat((model.parameters as any).pricing.prompt) * 1000000).toFixed(2)} / ${(parseFloat((model.parameters as any).pricing.completion) * 1000000).toFixed(2)} per 1M tokens
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground mt-0.5 capitalize">{model.provider}</p>
+              )}
             </div>
             <Button
               size="sm"
