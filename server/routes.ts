@@ -876,8 +876,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (mimetype === "application/pdf") {
         // Parse PDF - pdf-parse only works with CommonJS so we use createRequire
-        const { createRequire } = await import('module');
-        const require = createRequire(import.meta.url);
+        const Module = await import('node:module');
+        const require = Module.createRequire(import.meta.url);
         const pdfParse = require("pdf-parse");
         const pdfData = await pdfParse(buffer);
         content = pdfData.text;
