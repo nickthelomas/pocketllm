@@ -13,7 +13,7 @@ const DEFAULT_CONFIG: MemoryConfig = {
   summaryFrequency: 10,
   messagesPerSummary: 10,
   tier1SummariesBeforeTier2: 5,
-  model: "llama3.2:3b-instruct",
+  model: "llama3.2:1b",
 };
 
 export class MemoryManager {

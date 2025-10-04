@@ -60,7 +60,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const models = await ollama.listModels();
         const loadedModel = ollama.getLoadedModel();
         
-        // Only mark as OK if Ollama is online AND has models
+        // Only mark as OK if Ollama is online AND has models AND a model is loaded
         if (models.length === 0) {
           health.ollama.status = "warning";
           health.ollama.message = "Ollama connected but no models available - pull a model to get started";
@@ -71,12 +71,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
             health.ollama.status = "ok";
             health.ollama.message = `Ollama connected - ${models.length} models available - Active: ${loadedModel}`;
           } else {
-            health.ollama.status = "warning";
-            health.ollama.message = `Ollama connected - ${models.length} models available - Model "${loadedModel}" not found`;
+            health.ollama.status = "error";
+            health.ollama.message = `Model "${loadedModel}" failed to load or not found`;
           }
         } else {
-          health.ollama.status = "ok";
-          health.ollama.message = `Ollama connected - ${models.length} models available - No model loaded`;
+          // No model loaded - this is a warning state
+          health.ollama.status = "warning";
+          health.ollama.message = `Ollama connected - ${models.length} models available - No model loaded yet`;
         }
       }
     } catch (err) {

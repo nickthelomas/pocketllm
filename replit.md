@@ -113,10 +113,11 @@ A **strictly local-only** full-stack LLM application designed for phone use (web
    ollama serve
    ```
 
-2. **Models**: Pull at least one model
+2. **Models**: Pull at least one model (smallest recommended)
    ```bash
-   ollama pull llama3.2:3b-instruct
-   ollama pull mistral:7b-instruct-v0.2
+   ollama pull llama3.2:1b  # Recommended: smallest, fastest
+   ollama pull qwen2:1.5b    # Alternative: ultra-fast 1.5B
+   ollama pull gemma:2b      # Alternative: balanced 2B
    ```
 
 ### Running the App
@@ -170,6 +171,13 @@ npm run dev
 - ✅ **Completely rewrote ModelSelector** with auto-selection of smallest model, localStorage persistence, and pull catalog dialog
 - ✅ **Enhanced model management**: sync returns detailed metadata, new catalog endpoint for browsing available models
 - ✅ **Fixed model pull error handling** to properly propagate network/offline failures with destructive toasts
+- ✅ **Settings UI user-friendly labels**: All technical terms replaced with plain English (Temperature → Response Creativity, etc.) with slider endpoint labels
+- ✅ **Critical S24+ deployment fixes**:
+  - Fixed health check false positives (now validates model loading, not just Ollama connection)
+  - Improved model load validation (30s timeout, proper error messages, clears on failure)
+  - Changed default model to llama3.2:1b (1.3GB) instead of 3b-instruct/phi3:mini (2.3GB) for better phone performance
+  - Model catalog now shows smallest models first with performance warnings for heavy models
+  - Better error handling for network/manifest failures during model pull
 
 ## Mobile Deployment (APK)
 
