@@ -57,6 +57,10 @@ export class OllamaService {
     return this.loadedModel;
   }
 
+  setLoadedModel(modelName: string | null): void {
+    this.loadedModel = modelName;
+  }
+
   async loadModel(modelName: string): Promise<void> {
     try {
       console.log(`🔄 Loading model: ${modelName}...`);

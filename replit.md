@@ -40,6 +40,17 @@ Pocket LLM is a local-first, full-stack LLM application designed for mobile use 
 - **Automatic Brand Extraction**: Extracts and formats brand names from model IDs (e.g., `agentica-org` → "Agentica Org")
 - **Upsert Logic**: Sync updates existing models to ensure availability and refresh metadata
 - **Settings Validation**: Fixed empty string checks to properly detect configured API keys
+- **Pricing Display**: Shows prompt/completion costs per 1M tokens for cloud models
+- **Full Model Names**: Changed from truncate to break-all for model names to show size indicators (2b, 3b, etc.)
+
+### Provider-Aware Health Check (October 2025)
+- **Intelligent Health Monitoring**: System health now detects active model provider
+  - **Cloud Models (OpenRouter)**: Shows "ok" status when API key is configured
+  - **Remote Models**: Shows "ok" status when remote URL is configured
+  - **Local Models**: Checks local Ollama server connection
+- **No False Errors**: Cloud/remote models work independently of local Ollama status
+- **Auto-Refresh**: Health dialog refetches status when opened for fresh data
+- **Fixed Settings Keys**: Corrected key naming (snake_case) for reliable API key detection
 
 ## User Preferences
 - Always prioritize local-only solutions

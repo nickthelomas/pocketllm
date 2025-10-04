@@ -48,41 +48,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
       health.database.message = err instanceof Error ? err.message : "Database connection failed";
     }
 
-    // Check Ollama connection AND model availability
+    // Check LLM service - provider-aware
     try {
       const ollama = await getOllamaService();
-      const isOnline = await ollama.isAvailable();
+      const loadedModelName = ollama.getLoadedModel();
+      console.log(`🔍 Health check - loaded model: "${loadedModelName}"`);
       
-      if (!isOnline) {
-        health.ollama.status = "error";
-        health.ollama.message = "Ollama server not responding";
-      } else {
-        const models = await ollama.listModels();
-        const loadedModel = ollama.getLoadedModel();
+      // If a model is loaded, check its provider
+      if (loadedModelName) {
+        const modelInfo = await storage.getModel(loadedModelName);
+        console.log(`🔍 Health check - model provider: "${modelInfo?.provider}"`);
         
-        // Only mark as OK if Ollama is online AND has models AND a model is loaded
-        if (models.length === 0) {
-          health.ollama.status = "warning";
-          health.ollama.message = "Ollama connected but no models available - pull a model to get started";
-        } else if (loadedModel) {
-          // Verify the loaded model actually exists in the list
-          const modelExists = models.some(m => m.name === loadedModel);
-          if (modelExists) {
+        if (modelInfo?.provider === "openrouter") {
+          // Cloud model - check if API key is configured
+          const apiKeySetting = await storage.getSetting(null, "openrouter_api_key");
+          const apiKey = apiKeySetting?.value ? String(apiKeySetting.value) : "";
+          
+          if (apiKey && apiKey.trim()) {
             health.ollama.status = "ok";
-            health.ollama.message = `Ollama connected - ${models.length} models available - Active: ${loadedModel}`;
+            health.ollama.message = `OpenRouter cloud model active: ${loadedModelName}`;
           } else {
             health.ollama.status = "error";
-            health.ollama.message = `Model "${loadedModel}" failed to load or not found`;
+            health.ollama.message = "OpenRouter API key not configured";
+          }
+        } else if (modelInfo?.provider === "remote-ollama") {
+          // Remote model - check if remote URL is configured
+          const remoteUrlSetting = await storage.getSetting(null, "remote_ollama_url");
+          const remoteUrl = remoteUrlSetting?.value ? String(remoteUrlSetting.value) : "";
+          
+          if (remoteUrl && remoteUrl.trim()) {
+            health.ollama.status = "ok";
+            health.ollama.message = `Remote Ollama model active: ${loadedModelName}`;
+          } else {
+            health.ollama.status = "error";
+            health.ollama.message = "Remote Ollama URL not configured";
           }
         } else {
-          // No model loaded - this is a warning state
+          // Local model (ollama, huggingface, local-file) - check local Ollama
+          const isOnline = await ollama.isAvailable();
+          
+          if (!isOnline) {
+            health.ollama.status = "error";
+            health.ollama.message = "Ollama server not responding";
+          } else {
+            const models = await ollama.listModels();
+            const modelExists = models.some(m => m.name === loadedModelName);
+            
+            if (modelExists) {
+              health.ollama.status = "ok";
+              health.ollama.message = `Ollama connected - ${models.length} models available - Active: ${loadedModelName}`;
+            } else {
+              health.ollama.status = "error";
+              health.ollama.message = `Model "${loadedModelName}" failed to load or not found`;
+            }
+          }
+        }
+      } else {
+        // No model loaded - check if Ollama is at least online
+        const isOnline = await ollama.isAvailable();
+        
+        if (!isOnline) {
+          health.ollama.status = "error";
+          health.ollama.message = "Ollama server not responding";
+        } else {
+          const models = await ollama.listModels();
           health.ollama.status = "warning";
           health.ollama.message = `Ollama connected - ${models.length} models available - No model loaded yet`;
         }
       }
     } catch (err) {
       health.ollama.status = "error";
-      health.ollama.message = err instanceof Error ? err.message : "Ollama connection failed";
+      health.ollama.message = err instanceof Error ? err.message : "LLM service check failed";
     }
 
     res.json(health);
@@ -905,10 +941,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`🔄 Load request for model: "${name}"`);
       
+      // Check model provider
+      const modelInfo = await storage.getModel(name);
+      
+      if (!modelInfo) {
+        return res.status(404).json({ error: "Model not found in database" });
+      }
+      
+      // Cloud and remote models don't need to be "loaded" - they're instantly available
+      if (modelInfo.provider === "openrouter") {
+        console.log(`✅ Cloud model selected (no load needed): "${name}"`);
+        const ollama = await getOllamaService();
+        ollama.setLoadedModel(name);
+        
+        return res.json({ 
+          success: true, 
+          model: name,
+          message: `Cloud model ${name} ready` 
+        });
+      }
+      
+      if (modelInfo.provider === "remote-ollama") {
+        console.log(`✅ Remote model selected (no load needed): "${name}"`);
+        const ollama = await getOllamaService();
+        ollama.setLoadedModel(name);
+        
+        return res.json({ 
+          success: true, 
+          model: name,
+          message: `Remote model ${name} ready` 
+        });
+      }
+      
+      // Local models need to be loaded into Ollama
       const ollama = await getOllamaService();
       await ollama.loadModel(name);
       
-      console.log(`✅ Model loaded successfully: "${name}"`);
+      console.log(`✅ Local model loaded successfully: "${name}"`);
       
       res.json({ 
         success: true, 

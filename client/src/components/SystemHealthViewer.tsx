@@ -35,6 +35,12 @@ export default function SystemHealthViewer({ open, onOpenChange }: SystemHealthV
     retry: false
   });
 
+  useEffect(() => {
+    if (open) {
+      refetch();
+    }
+  }, [open, refetch]);
+
   const getStatusIcon = (status: string) => {
     switch (status) {
       case "ok":
