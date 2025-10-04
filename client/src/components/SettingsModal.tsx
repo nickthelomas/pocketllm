@@ -42,6 +42,13 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     chunkOverlap: 50,
     topKResults: 3,
     similarityThreshold: 0.7,
+    // GPU Acceleration Settings
+    gpu_enabled: false,
+    gpu_layers: 0,
+    gpu_main_gpu: 0,
+    gpu_low_vram: false,
+    gpu_threads: 4,
+    gpu_batch_size: 512,
   });
 
   const { toast } = useToast();
@@ -130,6 +137,12 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       chunkOverlap: 50,
       topKResults: 3,
       similarityThreshold: 0.7,
+      gpu_enabled: false,
+      gpu_layers: 0,
+      gpu_main_gpu: 0,
+      gpu_low_vram: false,
+      gpu_threads: 4,
+      gpu_batch_size: 512,
     });
   };
 
@@ -408,6 +421,133 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
           <Separator />
 
+          {/* GPU Acceleration */}
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <Zap className="w-5 h-5 text-yellow-500" />
+              <h3 className="text-lg font-semibold">GPU Acceleration</h3>
+            </div>
+            
+            <div className="space-y-3 mb-4">
+              <p className="text-sm text-muted-foreground">
+                Optimize Ollama for GPU acceleration on mobile and desktop devices. Requires Ollama restart after changes.
+              </p>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="gpu-enabled">Enable GPU Acceleration</Label>
+                  <p className="text-xs text-muted-foreground mt-1">Use GPU for faster inference (requires compatible GPU)</p>
+                </div>
+                <Button
+                  id="gpu-enabled"
+                  variant={settings.gpu_enabled ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSettings(prev => ({ ...prev, gpu_enabled: !prev.gpu_enabled }))}
+                  data-testid="button-gpu-enabled"
+                >
+                  {settings.gpu_enabled ? "Enabled" : "Disabled"}
+                </Button>
+              </div>
+
+              {settings.gpu_enabled && (
+                <>
+                  <div>
+                    <Label>GPU Layers (0-32)</Label>
+                    <div className="flex items-center gap-4 mt-2">
+                      <Slider
+                        value={[settings.gpu_layers]}
+                        onValueChange={([value]) => setSettings(prev => ({ ...prev, gpu_layers: value }))}
+                        min={0}
+                        max={32}
+                        step={1}
+                        className="flex-1"
+                        data-testid="slider-gpu-layers"
+                      />
+                      <Badge variant="secondary" className="min-w-[50px] justify-center">
+                        {settings.gpu_layers}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Number of model layers to offload to GPU (higher = faster but more VRAM)
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <Label>Main GPU Device</Label>
+                      <Input
+                        type="number"
+                        value={settings.gpu_main_gpu}
+                        onChange={(e) => setSettings(prev => ({ ...prev, gpu_main_gpu: parseInt(e.target.value) }))}
+                        min={0}
+                        max={3}
+                        className="mt-2"
+                        data-testid="input-main-gpu"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">GPU device ID (usually 0)</p>
+                    </div>
+
+                    <div>
+                      <Label>CPU Threads</Label>
+                      <Input
+                        type="number"
+                        value={settings.gpu_threads}
+                        onChange={(e) => setSettings(prev => ({ ...prev, gpu_threads: parseInt(e.target.value) }))}
+                        min={1}
+                        max={16}
+                        className="mt-2"
+                        data-testid="input-gpu-threads"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">Number of CPU threads (4-8 optimal)</p>
+                    </div>
+
+                    <div>
+                      <Label>Batch Size</Label>
+                      <Input
+                        type="number"
+                        value={settings.gpu_batch_size}
+                        onChange={(e) => setSettings(prev => ({ ...prev, gpu_batch_size: parseInt(e.target.value) }))}
+                        min={32}
+                        max={2048}
+                        step={32}
+                        className="mt-2"
+                        data-testid="input-batch-size"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">Processing batch size (512 optimal)</p>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="low-vram">Low VRAM Mode</Label>
+                      <div className="mt-2">
+                        <Button
+                          id="low-vram"
+                          variant={settings.gpu_low_vram ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setSettings(prev => ({ ...prev, gpu_low_vram: !prev.gpu_low_vram }))}
+                          className="w-full"
+                          data-testid="button-low-vram"
+                        >
+                          {settings.gpu_low_vram ? "Enabled" : "Disabled"}
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">Reduce VRAM usage for mobile GPUs</p>
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+                    <p className="text-xs text-yellow-500">
+                      ⚡ For Samsung S24+: Use 16-24 GPU layers with Snapdragon (OpenCL) or 8-16 with Exynos (Vulkan)
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+          </section>
+
+          <Separator />
+
           {/* User Profile */}
           <section>
             <div className="flex items-center gap-2 mb-4">
@@ -468,7 +608,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         {server.tools && Array.isArray(server.tools) && server.tools.length > 0 && (
                           <div className="flex items-center gap-2 text-xs">
                             <span className="text-muted-foreground">Tools:</span>
-                            <span className="text-foreground">{server.tools.join(", ")}</span>
+                            <span className="text-foreground">{(server.tools as string[]).join(", ")}</span>
                           </div>
                         )}
                       </div>
