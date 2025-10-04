@@ -507,6 +507,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      // Sync OpenRouter models if API key is configured
+      try {
+        const apiKey = await storage.getSetting(undefined, 'openrouter_api_key');
+        if (apiKey?.value) {
+          const { OpenRouterService } = await import('./services/openrouter.js');
+          const openrouterService = new OpenRouterService();
+          openrouterService.setApiKey(apiKey.value as string);
+          const openrouterModels = await openrouterService.fetchOpenRouterModels();
+          
+          // Add/update all OpenRouter models as immediately available (no pull needed)
+          for (const orModel of openrouterModels) {
+            const existing = await storage.getModel(orModel.name);
+            if (!existing) {
+              await storage.createModel({
+                name: orModel.name,
+                provider: "openrouter",
+                isAvailable: true,
+                parameters: { 
+                  pricing: orModel.pricing,
+                  context_length: orModel.context_length 
+                },
+              });
+            } else {
+              // Update existing model to mark as available
+              await storage.updateModel(orModel.name, {
+                isAvailable: true,
+                parameters: { 
+                  pricing: orModel.pricing,
+                  context_length: orModel.context_length 
+                },
+              });
+            }
+            syncedModels.push({
+              name: orModel.name,
+              provider: "openrouter",
+              pricing: orModel.pricing,
+            });
+          }
+        }
+      } catch (error) {
+        console.log('OpenRouter sync skipped:', error);
+      }
+
       const models = await storage.getModels();
       res.json({ synced: true, models });
     } catch (error) {

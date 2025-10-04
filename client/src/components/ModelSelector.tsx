@@ -37,9 +37,6 @@ interface Settings {
 export default function ModelSelector({ selectedModel, onModelChange }: ModelSelectorProps) {
   const { toast } = useToast();
   const [showCatalog, setShowCatalog] = useState(false);
-  const [isPulling, setIsPulling] = useState(false);
-  const [pullProgress, setPullProgress] = useState<{ status: string; progress: number } | null>(null);
-  const [pullComplete, setPullComplete] = useState(false);
   const [pullError, setPullError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("local");
 
@@ -162,11 +159,6 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
 
   const pullModelMutation = useMutation({
     mutationFn: async ({ name, source, downloadUrl }: { name: string; source: string; downloadUrl?: string }) => {
-      setIsPulling(true);
-      setPullComplete(false);
-      setPullError(null);
-      setPullProgress({ status: "Starting download...", progress: 0 });
-      
       const response = await fetch("/api/models/pull", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -178,59 +170,28 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
         throw new Error(error.message || "Network unavailable");
       }
 
-      if (!response.ok) throw new Error("Failed to pull model");
+      if (!response.ok) throw new Error("Failed to start download");
 
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error("No response body");
-
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (!line.trim() || !line.startsWith("data: ")) continue;
-          const data = line.slice(6);
-          if (data === "[DONE]") {
-            return;
-          }
-          
-          try {
-            const parsed = JSON.parse(data);
-            if (parsed.error) {
-              throw new Error(parsed.error);
-            }
-            if (parsed.status) {
-              setPullProgress({
-                status: parsed.status,
-                progress: Math.round(parsed.progress || 0)
-              });
-            }
-          } catch (e) {
-            if (e instanceof Error && e.message !== "Unexpected end of JSON input") {
-              throw e;
-            }
-          }
-        }
-      }
+      // Start download in background - don't wait for completion
+      // The backend will handle the download asynchronously
+      return { name };
     },
-    onSuccess: () => {
-      setIsPulling(false);
-      setPullComplete(true);
-      setPullProgress({ status: "Download complete!", progress: 100 });
-      queryClient.invalidateQueries({ queryKey: ["/api/models"] });
+    onSuccess: (data) => {
+      setShowCatalog(false);
+      toast({
+        title: "Download Started",
+        description: `${data.name} is downloading in the background. You can continue using the app. Sync models when download completes.`,
+        duration: 5000,
+      });
+      setPullError(null);
     },
     onError: (error) => {
-      setIsPulling(false);
-      setPullComplete(false);
+      toast({
+        title: "Download Failed",
+        description: error instanceof Error ? error.message : "Could not start download",
+        variant: "destructive",
+      });
       setPullError(error instanceof Error ? error.message : "Could not download model");
-      setPullProgress(null);
     },
   });
 
@@ -337,7 +298,6 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
           size="sm" 
           className="flex-1"
           onClick={() => setShowCatalog(true)}
-          disabled={isPulling}
           data-testid="button-pull-model"
         >
           <Download className="w-4 h-4 mr-2" />
@@ -348,7 +308,7 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
           size="sm" 
           className="flex-1"
           onClick={() => syncModelsMutation.mutate()}
-          disabled={syncModelsMutation.isPending || isPulling}
+          disabled={syncModelsMutation.isPending}
           data-testid="button-sync-models"
         >
           <RefreshCw className="w-4 h-4 mr-2" />
@@ -405,25 +365,15 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
       </Tabs>
 
       <Dialog open={showCatalog} onOpenChange={(open) => {
-        if (!isPulling || open) {
-          setShowCatalog(open);
-          if (!open) {
-            setPullProgress(null);
-            setPullComplete(false);
-            setPullError(null);
-          }
-        } else if (isPulling && !open) {
-          toast({
-            title: "Download in progress",
-            description: "Please wait for the download to complete before closing.",
-            variant: "default",
-          });
+        setShowCatalog(open);
+        if (!open) {
+          setPullError(null);
         }
       }}>
         <DialogContent className="max-w-md max-h-[90vh] flex flex-col" data-testid="dialog-pull-catalog">
           <DialogHeader className="shrink-0">
             <DialogTitle>
-              {pullComplete ? "Download Complete" : pullError ? "Download Failed" : "Pull Model"}
+              {pullError ? "Download Failed" : "Pull Model"}
             </DialogTitle>
           </DialogHeader>
 
@@ -455,29 +405,10 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
                 className="w-full" 
                 onClick={() => {
                   setPullError(null);
-                  setPullProgress(null);
-                  setPullComplete(false);
                 }}
                 data-testid="button-try-again"
               >
                 Try Again
-              </Button>
-            </div>
-          ) : pullComplete ? (
-            <div className="space-y-4">
-              <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
-                <p className="text-sm font-medium text-green-700 dark:text-green-300">✅ Download Complete!</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Model has been downloaded and is now available for use.
-                </p>
-              </div>
-              <Button 
-                variant="outline" 
-                className="w-full" 
-                onClick={() => setShowCatalog(false)}
-                data-testid="button-close-complete"
-              >
-                Close
               </Button>
             </div>
           ) : (
@@ -506,29 +437,12 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
 
               <TabsContent value="local" className="flex-1 mt-3">
                 <div className="max-h-[50vh] overflow-y-auto pr-2">
-                  {pullProgress ? (
-                    <div className="space-y-3">
-                      <div className="p-4 bg-primary/10 border border-primary/20 rounded-lg">
-                        <p className="text-sm font-medium mb-2">{pullProgress.status}</p>
-                        <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
-                          <div 
-                            className="bg-primary h-full transition-all duration-300"
-                            style={{ width: `${pullProgress.progress}%` }}
-                          />
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-2">{pullProgress.progress}% complete</p>
-                      </div>
-                      <p className="text-xs text-center text-muted-foreground">
-                        Downloading model... Please keep this dialog open.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      <p className="text-sm text-muted-foreground">
-                        Select a model to download:
-                      </p>
-                      
-                      {catalogLocalModels.map((model: CatalogModel) => (
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      Select a model to download:
+                    </p>
+                    
+                    {catalogLocalModels.map((model: CatalogModel) => (
                       <div 
                         key={model.name}
                         className="flex items-center justify-between p-3 border border-border rounded-lg hover:bg-accent/50 transition-colors"
@@ -549,7 +463,7 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
                           <Button
                             size="sm"
                             onClick={() => pullModelMutation.mutate({ name: model.name, source: model.source, downloadUrl: model.downloadUrl })}
-                            disabled={isPulling}
+                            disabled={pullModelMutation.isPending}
                             data-testid={`button-pull-${model.name}`}
                           >
                             Pull
@@ -557,76 +471,20 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
                         </div>
                       </div>
                     ))}
-                    </div>
-                  )}
+                  </div>
                 </div>
               </TabsContent>
 
               <TabsContent value="cloud" className="flex-1 mt-3">
                 <div className="max-h-[50vh] overflow-y-auto pr-2">
-                {!hasOpenRouterKey ? (
-                  <div className="p-4 bg-muted/50 border border-border rounded-lg">
-                    <p className="text-sm text-muted-foreground">
-                      Configure OpenRouter API key in Settings to pull cloud models.
-                    </p>
-                  </div>
-                ) : !isOnline ? (
-                  <div className="p-4 bg-muted/50 border border-border rounded-lg">
-                    <p className="text-sm text-muted-foreground">
-                      Network offline. Cloud models require internet connectivity.
-                    </p>
-                  </div>
-                ) : pullProgress ? (
                   <div className="space-y-3">
-                    <div className="p-4 bg-primary/10 border border-primary/20 rounded-lg">
-                      <p className="text-sm font-medium mb-2">{pullProgress.status}</p>
-                      <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
-                        <div 
-                          className="bg-primary h-full transition-all duration-300"
-                          style={{ width: `${pullProgress.progress}%` }}
-                        />
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-2">{pullProgress.progress}% complete</p>
+                    <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                      <p className="text-sm font-medium text-blue-700 dark:text-blue-300 mb-2">☁️ Cloud Models Ready</p>
+                      <p className="text-xs text-muted-foreground">
+                        OpenRouter models are instantly available - no download needed! Click <span className="font-semibold">Sync</span> to load them, then select from the Cloud tab on the main screen.
+                      </p>
                     </div>
-                    <p className="text-xs text-center text-muted-foreground">
-                      Downloading model... Please keep this dialog open.
-                    </p>
                   </div>
-                ) : (
-                  <div className="space-y-3">
-                    <p className="text-sm text-muted-foreground">
-                      Select a cloud model to download:
-                    </p>
-                    
-                    {catalogCloudModels.map((model: CatalogModel) => (
-                      <div 
-                        key={model.name}
-                        className="flex items-center justify-between p-3 border border-border rounded-lg hover:bg-accent/50 transition-colors"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <h4 className="text-sm font-medium truncate">{model.name}</h4>
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-700 dark:text-blue-300 border border-blue-500/30 shrink-0">
-                              OR
-                            </span>
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{model.description}</p>
-                        </div>
-                        <div className="flex items-center gap-3 shrink-0 ml-3">
-                          <span className="text-xs font-mono text-muted-foreground">{model.size}</span>
-                          <Button
-                            size="sm"
-                            onClick={() => pullModelMutation.mutate({ name: model.name, source: model.source, downloadUrl: model.downloadUrl })}
-                            disabled={isPulling}
-                            data-testid={`button-pull-${model.name}`}
-                          >
-                            Pull
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                    </div>
-                  )}
                 </div>
               </TabsContent>
 
@@ -636,22 +494,6 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
                   <div className="p-4 bg-muted/50 border border-border rounded-lg">
                     <p className="text-sm text-muted-foreground">
                       Configure Remote Ollama URL in Settings to pull remote models.
-                    </p>
-                  </div>
-                ) : pullProgress ? (
-                  <div className="space-y-3">
-                    <div className="p-4 bg-primary/10 border border-primary/20 rounded-lg">
-                      <p className="text-sm font-medium mb-2">{pullProgress.status}</p>
-                      <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
-                        <div 
-                          className="bg-primary h-full transition-all duration-300"
-                          style={{ width: `${pullProgress.progress}%` }}
-                        />
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-2">{pullProgress.progress}% complete</p>
-                    </div>
-                    <p className="text-xs text-center text-muted-foreground">
-                      Downloading model... Please keep this dialog open.
                     </p>
                   </div>
                 ) : (
@@ -674,7 +516,7 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
                           <Button
                             size="sm"
                             onClick={() => pullModelMutation.mutate({ name: model.name, source: model.source, downloadUrl: model.downloadUrl })}
-                            disabled={isPulling}
+                            disabled={pullModelMutation.isPending}
                             data-testid={`button-pull-${model.name}`}
                           >
                             Pull
@@ -682,8 +524,8 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
                         </div>
                       </div>
                     ))}
-                    </div>
-                  )}
+                  </div>
+                )}
                 </div>
               </TabsContent>
             </Tabs>
