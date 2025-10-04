@@ -622,8 +622,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/models/load", async (req, res) => {
+    const { name } = req.body ?? {};
     try {
-      const { name } = req.body;
       if (!name) {
         return res.status(400).json({ error: "Model name is required" });
       }
