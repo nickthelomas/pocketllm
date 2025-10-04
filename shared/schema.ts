@@ -131,7 +131,7 @@ export const insertModelSchema = createInsertSchema(models).omit({
   id: true,
   createdAt: true,
 }).extend({
-  provider: z.enum(["ollama", "local-file"]), // Enforce local-only providers
+  provider: z.enum(["ollama", "local-file", "huggingface", "openrouter", "remote-ollama"]),
   isAvailable: z.boolean().default(true),
 });
 

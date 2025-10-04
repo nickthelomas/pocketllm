@@ -448,18 +448,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/models/catalog", async (req, res) => {
     try {
+      const { OpenRouterService } = await import('./services/openrouter.js');
+      const openrouterService = new OpenRouterService();
+      
       const ollama = await getOllamaService();
       const ollamaAvailable = await ollama.isAvailable();
       
-      if (!ollamaAvailable) {
-        return res.status(503).json({ 
-          error: "Ollama not available",
-          message: "Network unavailable or Ollama not running",
-          offline: true 
-        });
+      // Fetch OpenRouter models if available
+      let openrouterModels: any[] = [];
+      try {
+        const apiKey = await storage.getSetting(undefined, 'openrouter_api_key');
+        if (apiKey?.value) {
+          openrouterService.setApiKey(apiKey.value as string);
+          openrouterModels = await openrouterService.fetchOpenRouterModels();
+        }
+      } catch (error) {
+        console.log('OpenRouter not configured or unavailable');
       }
-
-      // Catalog with both Ollama registry and HuggingFace-sourced models
+      
+      // Catalog with local (Ollama/HuggingFace) and cloud (OpenRouter) models
       const catalog = [
         // Ollama Registry - Standard models
         { 
@@ -522,9 +529,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
           provider: "huggingface",
           downloadUrl: "https://huggingface.co/bartowski/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf"
         },
+        
+        // OpenRouter cloud models (requires API key)
+        ...openrouterModels.slice(0, 10).map(model => {
+          const promptCost = parseFloat(model.pricing?.prompt || '0') * 1000000; // Convert to per 1M tokens
+          const completionCost = parseFloat(model.pricing?.completion || '0') * 1000000;
+          const avgCost = (promptCost + completionCost) / 2;
+          return {
+            name: model.name,
+            size: `$${avgCost.toFixed(3)}/1M tokens`,
+            description: `☁️ ${model.name.split('/').pop()} - Cloud`,
+            source: "openrouter",
+            provider: "openrouter",
+            pricing: model.pricing,
+            contextLength: model.contextLength
+          };
+        })
       ];
       
-      res.json({ catalog, available: true });
+      res.json({ catalog, available: true, openrouterAvailable: openrouterModels.length > 0 });
     } catch (error) {
       res.status(500).json({ 
         error: error instanceof Error ? error.message : String(error),
@@ -1064,6 +1087,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Import error:", error);
       res.status(500).json({ error: "Failed to import data" });
+    }
+  });
+
+  // System network check endpoint
+  app.get("/api/system/network", async (_req, res) => {
+    try {
+      // Check if we can reach OpenRouter (for cloud model availability)
+      const openrouterCheck = await fetch("https://openrouter.ai/api/v1/models", {
+        method: "HEAD",
+        signal: AbortSignal.timeout(5000) // 5 second timeout
+      }).then(() => true).catch(() => false);
+
+      res.json({
+        online: true,
+        openrouter: openrouterCheck,
+      });
+    } catch (error) {
+      res.json({
+        online: false,
+        openrouter: false,
+      });
     }
   });
 
