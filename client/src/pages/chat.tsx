@@ -24,7 +24,7 @@ import type { RagDocument } from "@shared/schema";
 
 export default function Chat() {
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
-  const [selectedModel, setSelectedModel] = useState("llama3.2:3b-instruct");
+  const [selectedModel, setSelectedModel] = useState("");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isHealthViewerOpen, setIsHealthViewerOpen] = useState(false);
   const [isMobileRAGOpen, setIsMobileRAGOpen] = useState(false);
