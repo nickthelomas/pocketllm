@@ -540,10 +540,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Model name is required" });
       }
 
+      console.log(`📥 Pull request for model: ${name} (source: ${source})`);
+
       const ollama = await getOllamaService();
       const ollamaAvailable = await ollama.isAvailable();
       
       if (!ollamaAvailable) {
+        console.log(`❌ Ollama not available for pull`);
         return res.status(503).json({ 
           error: "Network unavailable",
           message: "Ollama not running or network down"
@@ -561,6 +564,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // HuggingFace models: Download GGUF and import to Ollama
         // Note: This is a simplified implementation
         // In production, you'd want proper GGUF download and Modelfile creation
+        console.log(`❌ HuggingFace import not implemented`);
         res.write(`data: ${JSON.stringify({ 
           error: "HuggingFace model import not yet implemented. Coming soon!" 
         })}\n\n`);
@@ -569,13 +573,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Ollama registry pull (default)
+      console.log(`🔄 Starting Ollama pull for: ${name}`);
+      let progressReceived = false;
+      
       await ollama.pullModel(name, (progress, status) => {
+        progressReceived = true;
+        console.log(`📊 Pull progress: ${progress.toFixed(1)}% - ${status}`);
         res.write(`data: ${JSON.stringify({ progress, status })}\n\n`);
       });
 
+      console.log(`✅ Pull completed. Progress updates received: ${progressReceived}`);
+
       // Verify model exists in Ollama before marking as available
       const ollamaModels = await ollama.listModels();
+      console.log(`🔍 Ollama has ${ollamaModels.length} models:`, ollamaModels.map(m => m.name));
+      
       const modelInOllama = ollamaModels.some(m => m.name === name);
+      console.log(`✓ Model "${name}" in Ollama: ${modelInOllama}`);
       
       if (!modelInOllama) {
         throw new Error("Model pull completed but model not found in Ollama. Try syncing models.");
@@ -587,17 +601,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const modelExists = existingModels.some(m => m.name === name);
       
       if (!modelExists) {
+        console.log(`➕ Adding model to database: ${name}`);
         await storage.createModel({
           name,
           provider: "ollama",
           isAvailable: true,
           parameters: null,
         });
+      } else {
+        console.log(`ℹ️  Model already in database: ${name}`);
       }
 
       res.write(`data: [DONE]\n\n`);
       res.end();
     } catch (error) {
+      console.error(`❌ Pull error:`, error);
       res.write(`data: ${JSON.stringify({ error: error instanceof Error ? error.message : String(error) })}\n\n`);
       res.end();
     }
@@ -610,8 +628,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Model name is required" });
       }
 
+      console.log(`🔄 Load request for model: "${name}"`);
+      
       const ollama = await getOllamaService();
       await ollama.loadModel(name);
+      
+      console.log(`✅ Model loaded successfully: "${name}"`);
       
       res.json({ 
         success: true, 
@@ -619,6 +641,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: `Model ${name} loaded and ready` 
       });
     } catch (error) {
+      console.error(`❌ Failed to load model "${name}":`, error);
       res.status(500).json({ 
         error: error instanceof Error ? error.message : String(error),
         message: "Failed to load model"
