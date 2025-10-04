@@ -10,13 +10,15 @@ import ThemeToggle from "@/components/ThemeToggle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarTrigger } from "@/components/ui/sidebar";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { 
   Settings, 
   Download, 
   Upload,
   Lightbulb,
-  Activity
+  Activity,
+  FileStack
 } from "lucide-react";
 import type { RagDocument } from "@shared/schema";
 
@@ -25,6 +27,7 @@ export default function Chat() {
   const [selectedModel, setSelectedModel] = useState("llama3.2:3b-instruct");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isHealthViewerOpen, setIsHealthViewerOpen] = useState(false);
+  const [isMobileRAGOpen, setIsMobileRAGOpen] = useState(false);
   const isMobile = useIsMobile();
 
   // Health check
@@ -117,6 +120,17 @@ export default function Chat() {
           </div>
           
           <div className="flex items-center gap-2 md:gap-3">
+            {/* Mobile RAG Panel Trigger */}
+            {isMobile && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setIsMobileRAGOpen(true)} 
+                data-testid="button-mobile-rag"
+              >
+                <FileStack className="w-4 h-4" />
+              </Button>
+            )}
             <ThemeToggle />
             <Button variant="ghost" size="sm" onClick={() => setIsHealthViewerOpen(true)} data-testid="button-health">
               <Activity className="w-4 h-4" />
@@ -175,6 +189,27 @@ export default function Chat() {
           open={isHealthViewerOpen}
           onOpenChange={setIsHealthViewerOpen}
         />
+
+        {/* Mobile RAG Panel Sheet */}
+        {isMobile && (
+          <Sheet open={isMobileRAGOpen} onOpenChange={setIsMobileRAGOpen}>
+            <SheetContent 
+              side="right" 
+              className="w-[90%] sm:w-[400px] p-0"
+              data-testid="sheet-mobile-rag"
+            >
+              <SheetHeader className="sr-only">
+                <SheetTitle>RAG Documents</SheetTitle>
+                <SheetDescription>
+                  Upload and manage documents for Retrieval-Augmented Generation
+                </SheetDescription>
+              </SheetHeader>
+              <div className="h-full overflow-hidden">
+                <RAGPanel />
+              </div>
+            </SheetContent>
+          </Sheet>
+        )}
       </div>
     </SidebarProvider>
   );
