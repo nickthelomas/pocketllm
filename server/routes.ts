@@ -320,33 +320,101 @@ export async function registerRoutes(app: Express): Promise<Server> {
         { rawMessageCount, tokenBudget }
       );
 
-      // Stream response from Ollama
-      let fullResponse = "";
+      // Determine provider from model
       const modelName = model || "llama3.2:1b";
+      const modelInfo = await storage.getModel(modelName);
+      const provider = modelInfo?.provider || 'ollama';
       
-      const ollama = await getOllamaService();
+      let fullResponse = "";
       
       try {
-        for await (const chunk of ollama.generateStream({
-          model: modelName,
-          prompt: message,
-          system: hierarchicalContext.fullContext || undefined,
-          temperature: settings?.temperature ?? 0.7,
-          top_p: settings?.topP ?? 0.9,
-          top_k: settings?.topK ?? 40,
-          num_predict: settings?.maxTokens ?? 2000,
-          seed: settings?.seed ?? undefined,
-          context: context ?? undefined,
-        })) {
-          const token = chunk.response;
-          fullResponse += token;
+        if (provider === 'openrouter') {
+          // OpenRouter cloud models
+          const { OpenRouterService } = await import('./services/openrouter.js');
+          const openrouterService = new OpenRouterService();
+          const apiKey = await storage.getSetting(undefined, 'openrouter_api_key');
           
-          res.write(`data: ${JSON.stringify({ token, fullResponse })}\n\n`);
+          if (!apiKey?.value) {
+            throw new Error('OpenRouter API key not configured. Please add it in Settings.');
+          }
+          
+          openrouterService.setApiKey(apiKey.value as string);
+          
+          // Build messages in OpenAI format
+          const messages: any[] = [];
+          if (hierarchicalContext.fullContext) {
+            messages.push({ role: 'system', content: hierarchicalContext.fullContext });
+          }
+          messages.push({ role: 'user', content: message });
+          
+          for await (const chunk of openrouterService.streamOpenRouterChat({
+            model: modelName,
+            messages,
+            temperature: settings?.temperature ?? 0.7,
+            max_tokens: settings?.maxTokens ?? 2000,
+          })) {
+            const token = chunk;
+            fullResponse += token;
+            res.write(`data: ${JSON.stringify({ token, fullResponse })}\n\n`);
+          }
+        } else if (provider === 'remote-ollama') {
+          // Remote Ollama via Tailscale
+          const { RemoteOllamaService } = await import('./services/remoteOllama.js');
+          const remoteService = new RemoteOllamaService();
+          const remoteUrl = await storage.getSetting(undefined, 'remote_ollama_url');
+          
+          if (!remoteUrl?.value) {
+            throw new Error('Remote Ollama URL not configured. Please add it in Settings.');
+          }
+          
+          remoteService.setBaseUrl(remoteUrl.value as string);
+          
+          for await (const chunk of remoteService.generateStream({
+            model: modelName,
+            prompt: message,
+            system: hierarchicalContext.fullContext || undefined,
+            temperature: settings?.temperature ?? 0.7,
+            top_p: settings?.topP ?? 0.9,
+            top_k: settings?.topK ?? 40,
+            num_predict: settings?.maxTokens ?? 2000,
+            seed: settings?.seed ?? undefined,
+            context: context ?? undefined,
+          })) {
+            const token = chunk.response;
+            fullResponse += token;
+            res.write(`data: ${JSON.stringify({ token, fullResponse })}\n\n`);
+          }
+        } else {
+          // Local Ollama (default)
+          const ollama = await getOllamaService();
+          
+          for await (const chunk of ollama.generateStream({
+            model: modelName,
+            prompt: message,
+            system: hierarchicalContext.fullContext || undefined,
+            temperature: settings?.temperature ?? 0.7,
+            top_p: settings?.topP ?? 0.9,
+            top_k: settings?.topK ?? 40,
+            num_predict: settings?.maxTokens ?? 2000,
+            seed: settings?.seed ?? undefined,
+            context: context ?? undefined,
+          })) {
+            const token = chunk.response;
+            fullResponse += token;
+            res.write(`data: ${JSON.stringify({ token, fullResponse })}\n\n`);
+          }
         }
-      } catch (ollamaError) {
-        console.error("Ollama error:", ollamaError);
+      } catch (streamError) {
+        console.error("Streaming error:", streamError);
         
-        const errorMessage = "⚠️ **Ollama Not Available**\n\nThe local Ollama server is not running. This app requires a local Ollama instance for LLM inference.\n\n**To fix this:**\n1. Install Ollama from https://ollama.ai\n2. Start Ollama: `ollama serve`\n3. Pull a model: `ollama pull llama3.2:1b`\n4. Refresh this page\n\n**Note:** This is a strictly local-only LLM app with zero cloud dependencies. All inference happens on your device.";
+        let errorMessage = "";
+        if (provider === 'openrouter') {
+          errorMessage = "⚠️ **OpenRouter Error**\n\n" + (streamError instanceof Error ? streamError.message : String(streamError)) + "\n\nCheck your API key and network connection.";
+        } else if (provider === 'remote-ollama') {
+          errorMessage = "⚠️ **Remote Ollama Error**\n\n" + (streamError instanceof Error ? streamError.message : String(streamError)) + "\n\nCheck your Tailscale connection and remote server status.";
+        } else {
+          errorMessage = "⚠️ **Ollama Not Available**\n\nThe local Ollama server is not running.\n\n**To fix:**\n1. Install Ollama from https://ollama.ai\n2. Run: `ollama serve`\n3. Pull a model: `ollama pull llama3.2:1b`";
+        }
         
         fullResponse = errorMessage;
         res.write(`data: ${JSON.stringify({ token: errorMessage, fullResponse: errorMessage })}\n\n`);
