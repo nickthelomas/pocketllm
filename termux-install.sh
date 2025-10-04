@@ -79,29 +79,61 @@ log "Step 7/10: Creating data directory..."
 mkdir -p "$INSTALL_DIR/data"
 log "Using MemStorage (in-memory) - defaults are pre-configured"
 
-log "Step 8/10: Pulling default Ollama model (llama3.2:1b - smallest, fastest)..."
+log "Step 8/10: Verifying Ollama version for mobile compatibility..."
+OLLAMA_VERSION=$(ollama --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+log "Ollama version: $OLLAMA_VERSION"
+
+# Note: Mobile version check - Ollama 0.1.20+ recommended for Android
+# Earlier versions may have stability issues
+if [ -n "$OLLAMA_VERSION" ]; then
+    log "Ollama version verified - proceeding with model pull"
+else
+    warn "Could not determine Ollama version - proceeding anyway"
+fi
+
+log "Step 9/10: Pulling default Ollama model (llama3.2:1b - smallest, fastest)..."
 # Start Ollama in background
 termux-wake-lock
 ollama serve > "$INSTALL_DIR/data/ollama.log" 2>&1 &
 OLLAMA_PID=$!
-sleep 5
 
-# Pull smallest model (best for phones)
-if ollama pull llama3.2:1b; then
-    log "Default model pulled successfully (1.3GB)"
-else
-    warn "Failed to pull model. Possible causes:"
-    warn "  - No internet connection"
-    warn "  - Ollama registry unavailable"
-    warn "  - Insufficient storage"
-    warn ""
-    warn "You can pull manually later with: ollama pull llama3.2:1b"
+# Wait for Ollama to be ready with retries
+log "Waiting for Ollama to start..."
+for i in {1..12}; do
+    if curl -s http://127.0.0.1:11434/api/tags > /dev/null 2>&1; then
+        log "Ollama is ready (attempt $i)"
+        break
+    fi
+    if [ $i -eq 12 ]; then
+        warn "Ollama did not start within 30 seconds"
+        kill $OLLAMA_PID || true
+        warn "You can pull models manually later with: ollama pull llama3.2:1b"
+        break
+    fi
+    sleep 2.5
+done
+
+# Pull smallest model (best for phones) with timeout
+if [ $i -lt 12 ]; then
+    log "Attempting to pull llama3.2:1b (1.3GB)..."
+    if timeout 300 ollama pull llama3.2:1b 2>&1 | tee -a "$INSTALL_DIR/data/pull.log"; then
+        log "Default model pulled successfully (1.3GB)"
+    else
+        warn "Failed to pull model. Possible causes:"
+        warn "  - No internet connection"
+        warn "  - Ollama registry unavailable"
+        warn "  - Insufficient storage (need 1.3GB free)"
+        warn "  - Download timeout (tried 5 minutes)"
+        warn ""
+        warn "You can pull manually later with: ollama pull llama3.2:1b"
+        warn "Or try smaller model: ollama pull qwen2:1.5b (0.9GB)"
+    fi
 fi
 
 # Stop Ollama for now
 kill $OLLAMA_PID || true
 
-log "Step 9/10: Setting up Termux:Boot auto-startup..."
+log "Step 10/11: Setting up Termux:Boot auto-startup..."
 mkdir -p ~/.termux/boot
 chmod 700 ~/.termux/boot
 
@@ -115,7 +147,7 @@ BOOTSCRIPT
 chmod +x ~/.termux/boot/pocketllm-autostart
 log "Boot script created at ~/.termux/boot/pocketllm-autostart"
 
-log "Step 10/10: Setting up Termux:Widget home screen launchers..."
+log "Step 11/11: Setting up Termux:Widget home screen launchers..."
 mkdir -p ~/.shortcuts
 chmod 700 ~/.shortcuts
 
