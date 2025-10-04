@@ -27,12 +27,14 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
   const [showCatalog, setShowCatalog] = useState(false);
   const [isPulling, setIsPulling] = useState(false);
   const [pullProgress, setPullProgress] = useState<{ status: string; progress: number } | null>(null);
+  const [pullComplete, setPullComplete] = useState(false);
+  const [pullError, setPullError] = useState<string | null>(null);
 
   const { data: models = [], isLoading: modelsLoading } = useQuery<Model[]>({
     queryKey: ["/api/models"],
   });
 
-  const { data: catalogData, isError: catalogError } = useQuery({
+  const { data: catalogData, isError: catalogError } = useQuery<{ catalog: CatalogModel[] }>({
     queryKey: ["/api/models/catalog"],
     enabled: showCatalog,
     retry: false,
@@ -123,6 +125,8 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
   const pullModelMutation = useMutation({
     mutationFn: async ({ name, source }: { name: string; source: string }) => {
       setIsPulling(true);
+      setPullComplete(false);
+      setPullError(null);
       setPullProgress({ status: "Starting download...", progress: 0 });
       
       const response = await fetch("/api/models/pull", {
@@ -156,7 +160,6 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
           if (!line.trim() || !line.startsWith("data: ")) continue;
           const data = line.slice(6);
           if (data === "[DONE]") {
-            setPullProgress(null);
             return; // Success
           }
           
@@ -181,22 +184,15 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
     },
     onSuccess: () => {
       setIsPulling(false);
-      setPullProgress(null);
-      setShowCatalog(false);
+      setPullComplete(true);
+      setPullProgress({ status: "Download complete!", progress: 100 });
       queryClient.invalidateQueries({ queryKey: ["/api/models"] });
-      toast({
-        title: "Pull Completed",
-        description: "Model downloaded and ready to use.",
-      });
     },
     onError: (error) => {
       setIsPulling(false);
+      setPullComplete(false);
+      setPullError(error instanceof Error ? error.message : "Could not download model");
       setPullProgress(null);
-      toast({
-        title: "Pull Failed",
-        description: error instanceof Error ? error.message : "Could not download model",
-        variant: "destructive",
-      });
     },
   });
 
@@ -262,10 +258,30 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
         </Button>
       </div>
 
-      <Dialog open={showCatalog} onOpenChange={setShowCatalog}>
-        <DialogContent className="max-w-md" data-testid="dialog-pull-catalog">
-          <DialogHeader>
-            <DialogTitle>Pull Model from Ollama</DialogTitle>
+      <Dialog open={showCatalog} onOpenChange={(open) => {
+        // Prevent closing during active download
+        if (!isPulling || open) {
+          setShowCatalog(open);
+          if (!open) {
+            // Reset states when closing
+            setPullProgress(null);
+            setPullComplete(false);
+            setPullError(null);
+          }
+        } else if (isPulling && !open) {
+          // User tried to close during download - show feedback
+          toast({
+            title: "Download in progress",
+            description: "Please wait for the download to complete before closing.",
+            variant: "default",
+          });
+        }
+      }}>
+        <DialogContent className="max-w-md max-h-[90vh] flex flex-col" data-testid="dialog-pull-catalog">
+          <DialogHeader className="shrink-0">
+            <DialogTitle>
+              {pullComplete ? "Download Complete" : pullError ? "Download Failed" : "Pull Model"}
+            </DialogTitle>
           </DialogHeader>
 
           {catalogError ? (
@@ -285,8 +301,44 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
                 Close
               </Button>
             </div>
+          ) : pullError ? (
+            <div className="space-y-4">
+              <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
+                <p className="text-sm text-destructive font-medium">Pull Failed</p>
+                <p className="text-xs text-muted-foreground mt-1">{pullError}</p>
+              </div>
+              <Button 
+                variant="outline" 
+                className="w-full" 
+                onClick={() => {
+                  setPullError(null);
+                  setPullProgress(null);
+                  setPullComplete(false);
+                }}
+                data-testid="button-try-again"
+              >
+                Try Again
+              </Button>
+            </div>
+          ) : pullComplete ? (
+            <div className="space-y-4">
+              <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
+                <p className="text-sm font-medium text-green-700 dark:text-green-300">✅ Download Complete!</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Model has been downloaded and is now available for use.
+                </p>
+              </div>
+              <Button 
+                variant="outline" 
+                className="w-full" 
+                onClick={() => setShowCatalog(false)}
+                data-testid="button-close-complete"
+              >
+                Close
+              </Button>
+            </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-3 overflow-y-auto flex-1 pr-2">
               {pullProgress ? (
                 <div className="space-y-3">
                   <div className="p-4 bg-primary/10 border border-primary/20 rounded-lg">
@@ -299,6 +351,9 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
                     </div>
                     <p className="text-xs text-muted-foreground mt-2">{pullProgress.progress}% complete</p>
                   </div>
+                  <p className="text-xs text-center text-muted-foreground">
+                    Downloading model... Please keep this dialog open.
+                  </p>
                 </div>
               ) : (
                 <>
@@ -311,18 +366,18 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
                       key={model.name}
                       className="flex items-center justify-between p-3 border border-border rounded-lg hover:bg-accent/50 transition-colors"
                     >
-                      <div className="flex-1">
+                      <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <h4 className="text-sm font-medium">{model.name}</h4>
+                          <h4 className="text-sm font-medium truncate">{model.name}</h4>
                           {model.source === "huggingface" && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-700 dark:text-orange-300 border border-orange-500/30">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-700 dark:text-orange-300 border border-orange-500/30 shrink-0">
                               HF
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">{model.description}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{model.description}</p>
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 shrink-0 ml-3">
                         <span className="text-xs font-mono text-muted-foreground">{model.size}</span>
                         <Button
                           size="sm"

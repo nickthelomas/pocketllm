@@ -573,7 +573,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.write(`data: ${JSON.stringify({ progress, status })}\n\n`);
       });
 
-      // Only add model to storage AFTER successful pull
+      // Verify model exists in Ollama before marking as available
+      const ollamaModels = await ollama.listModels();
+      const modelInOllama = ollamaModels.some(m => m.name === name);
+      
+      if (!modelInOllama) {
+        throw new Error("Model pull completed but model not found in Ollama. Try syncing models.");
+      }
+
+      // Only add model to storage AFTER successful pull and verification
       // Check if model already exists to prevent duplicates
       const existingModels = await storage.getModels();
       const modelExists = existingModels.some(m => m.name === name);
