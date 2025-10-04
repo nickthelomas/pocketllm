@@ -1,6 +1,6 @@
 import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
-import { dbStorage as storage } from "./dbStorage";
+import { storage } from "./storageSelector";
 import { insertConversationSchema, insertMessageSchema, insertRagDocumentSchema, insertModelSchema, insertSettingsSchema, insertMcpServerSchema } from "@shared/schema";
 import multer from "multer";
 import { z } from "zod";
@@ -27,6 +27,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Health check
   app.get("/api/health", async (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
+  });
+
+  // System health and logs endpoint
+  app.get("/api/system/health", async (req, res) => {
+    const health = {
+      timestamp: new Date().toISOString(),
+      backend: { status: "ok", message: "Backend server is running" },
+      database: { status: "unknown", message: "" },
+      ollama: { status: "unknown", message: "" }
+    };
+
+    // Check database connection
+    try {
+      await storage.getSettings();
+      health.database.status = "ok";
+      health.database.message = "Database connected successfully";
+    } catch (err) {
+      health.database.status = "error";
+      health.database.message = err instanceof Error ? err.message : "Database connection failed";
+    }
+
+    // Check Ollama connection
+    try {
+      const ollama = await getOllamaService();
+      const models = await ollama.listModels();
+      health.ollama.status = "ok";
+      health.ollama.message = `Ollama connected - ${models.length} models available`;
+    } catch (err) {
+      health.ollama.status = "error";
+      health.ollama.message = err instanceof Error ? err.message : "Ollama connection failed";
+    }
+
+    res.json(health);
   });
 
   // Conversations

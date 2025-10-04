@@ -5,6 +5,7 @@ import ConversationList from "@/components/ConversationList";
 import ChatArea from "@/components/ChatArea";
 import RAGPanel from "@/components/RAGPanel";
 import SettingsModal from "@/components/SettingsModal";
+import SystemHealthViewer from "@/components/SystemHealthViewer";
 import ThemeToggle from "@/components/ThemeToggle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,8 @@ import {
   Settings, 
   Download, 
   Upload,
-  Lightbulb
+  Lightbulb,
+  Activity
 } from "lucide-react";
 import type { RagDocument } from "@shared/schema";
 
@@ -22,6 +24,7 @@ export default function Chat() {
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState("llama3.2:3b-instruct");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isHealthViewerOpen, setIsHealthViewerOpen] = useState(false);
   const isMobile = useIsMobile();
 
   // Health check
@@ -115,6 +118,9 @@ export default function Chat() {
           
           <div className="flex items-center gap-2 md:gap-3">
             <ThemeToggle />
+            <Button variant="ghost" size="sm" onClick={() => setIsHealthViewerOpen(true)} data-testid="button-health">
+              <Activity className="w-4 h-4" />
+            </Button>
             <Button variant="ghost" size="sm" onClick={handleExport} data-testid="button-export">
               <Download className="w-4 h-4" />
             </Button>
@@ -162,6 +168,12 @@ export default function Chat() {
         <SettingsModal 
           isOpen={isSettingsOpen}
           onClose={() => setIsSettingsOpen(false)}
+        />
+
+        {/* System Health Viewer */}
+        <SystemHealthViewer 
+          open={isHealthViewerOpen}
+          onOpenChange={setIsHealthViewerOpen}
         />
       </div>
     </SidebarProvider>

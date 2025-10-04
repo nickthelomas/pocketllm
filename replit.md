@@ -12,7 +12,10 @@ A **strictly local-only** full-stack LLM application designed for phone use (web
 ### Technology Stack
 - **Frontend**: React + TypeScript + Vite + TailwindCSS + shadcn/ui
 - **Backend**: Express + TypeScript
-- **Storage**: In-memory (MemStorage) - easily migrated to SQLite/PostgreSQL
+- **Storage**: 
+  - **Development/Cloud**: PostgreSQL via DATABASE_URL
+  - **Termux/Android**: MemStorage (in-memory with pre-configured defaults)
+  - Auto-selects based on USE_MEMSTORAGE env var or DATABASE_URL presence
 - **LLM**: Ollama local inference server
 - **Model Discovery**: Auto-scan GGUF/GGML files from `./models` directory
 
@@ -198,6 +201,16 @@ cd android && ./gradlew assembleDebug
 ```
 
 ### Usage on Android
+
+#### Automated Install (Recommended)
+1. Install Termux, Termux:Boot, and Termux:Widget from F-Droid
+2. Run: `bash termux-install.sh` (one command does everything)
+3. Add home screen widgets for one-tap server control
+4. Servers auto-start on device boot
+
+See [TERMUX_INSTALL.md](TERMUX_INSTALL.md) for complete guide.
+
+#### Manual Install
 1. Install Termux on Android
 2. Install Ollama in Termux: `pkg install ollama`
 3. Start Ollama: `ollama serve`
@@ -205,7 +218,7 @@ cd android && ./gradlew assembleDebug
 5. Install and open the Pocket LLM APK
 6. APK connects to localhost:5000 automatically
 
-**Note**: Backend must be running in Termux before opening the APK
+**Note**: Automated install includes health monitoring, auto-retry, and widgets
 
 ## User Preferences
 - Always prioritize local-only solutions

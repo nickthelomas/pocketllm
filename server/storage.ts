@@ -82,6 +82,26 @@ export class MemStorage implements IStorage {
       const fullModel: Model = { ...model, id, createdAt: new Date(), isAvailable: model.isAvailable, parameters: model.parameters ?? null };
       this.models.set(id, fullModel);
     });
+
+    // Initialize with default settings for Termux/offline use
+    const now = new Date();
+    const defaultSettings: Settings[] = [
+      { id: randomUUID(), userId: null, key: "baseApiUrl", value: "http://127.0.0.1:11434", updatedAt: now },
+      { id: randomUUID(), userId: null, key: "temperature", value: "0.7", updatedAt: now },
+      { id: randomUUID(), userId: null, key: "topP", value: "0.9", updatedAt: now },
+      { id: randomUUID(), userId: null, key: "topK", value: "40", updatedAt: now },
+      { id: randomUUID(), userId: null, key: "maxTokens", value: "2048", updatedAt: now },
+      { id: randomUUID(), userId: null, key: "rawMessageCount", value: "10", updatedAt: now },
+      { id: randomUUID(), userId: null, key: "summaryFrequency", value: "10", updatedAt: now },
+      { id: randomUUID(), userId: null, key: "tokenBudget", value: "4000", updatedAt: now },
+      { id: randomUUID(), userId: null, key: "chunkSize", value: "512", updatedAt: now },
+      { id: randomUUID(), userId: null, key: "ragTopK", value: "5", updatedAt: now }
+    ];
+
+    defaultSettings.forEach(setting => {
+      const key = `${setting.userId || 'null'}_${setting.key}`;
+      this.settings.set(key, setting);
+    });
   }
 
   // Users
