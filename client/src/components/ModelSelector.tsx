@@ -227,7 +227,7 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
           >
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h4 className="text-sm font-medium truncate">{model.name}</h4>
+                <h4 className="text-sm font-medium break-all">{model.name}</h4>
                 {model.provider === "huggingface" && (
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-700 dark:text-orange-300 border border-orange-500/30 shrink-0">
                     HF
