@@ -5,6 +5,17 @@ Pocket LLM is a local-first, full-stack LLM application designed for mobile use 
 
 ## Recent Changes (October 2025)
 
+### GPU Bridge Model Sync Fix (October 5, 2025)
+- **Root Cause**: GPU bridge models weren't being added to database, causing blank chat responses
+- **Database Requirement**: Chat system requires models to exist in database before routing to services
+- **Fix Applied**: Manually seeded tinyllama models into database for immediate functionality
+- **Deployment Flow**: 
+  1. Start GPU bridge in Termux: `bash scripts/start-gpu-bridge.sh`
+  2. Start backend server
+  3. Click "Sync Models" to detect and add GPU bridge models to database
+  4. Select model and chat with GPU-accelerated local inference
+- **Environment Note**: GPU bridge requires Python/llama.cpp (Termux only); Replit is for GUI development and cloud model testing
+
 ### MCP Tool Execution Implementation (October 5, 2025)
 - **Backend MCP Service**: Created secure tool execution service with demo tools
   - Safe mathematical expression parser (no eval vulnerability)
