@@ -19,18 +19,27 @@ NC='\033[0m' # No Color
 # Function to detect device chipset
 detect_chipset() {
     local chipset=$(getprop ro.board.platform)
-    local gpu_info=$(dumpsys SurfaceFlinger | grep "GLES" | head -n 1)
+    local hardware=$(getprop ro.hardware)
+    local model=$(getprop ro.product.model)
     
     echo -e "${BLUE}Detecting device hardware...${NC}"
     echo "Platform: $chipset"
-    echo "GPU Info: $gpu_info"
+    echo "Hardware: $hardware"
+    echo "Model: $model"
     
-    if [[ "$chipset" == *"sm8"* ]] || [[ "$gpu_info" == *"Adreno"* ]]; then
+    # Enhanced detection without dumpsys (not available in Termux)
+    # Check for Snapdragon (sm8xxx series or specific hardware names)
+    if [[ "$chipset" == *"sm8"* ]] || [[ "$chipset" == *"msm"* ]] || [[ "$hardware" == *"qcom"* ]]; then
         echo -e "${GREEN}✓ Snapdragon detected (Adreno GPU)${NC}"
         return 0
-    elif [[ "$chipset" == *"exynos"* ]] || [[ "$gpu_info" == *"Mali"* ]] || [[ "$gpu_info" == *"Xclipse"* ]]; then
-        echo -e "${GREEN}✓ Exynos detected (Mali/Xclipse GPU)${NC}"
+    # Check for Exynos (s5e series or exynos platform)
+    elif [[ "$chipset" == *"exynos"* ]] || [[ "$hardware" == *"s5e"* ]] || [[ "$chipset" == *"s5e"* ]]; then
+        echo -e "${GREEN}✓ Exynos detected (Xclipse/Mali GPU)${NC}"
         return 1
+    # Check for MediaTek
+    elif [[ "$chipset" == *"mt"* ]] || [[ "$hardware" == *"mediatek"* ]]; then
+        echo -e "${YELLOW}⚠ MediaTek detected - Limited GPU support${NC}"
+        return 2
     else
         echo -e "${YELLOW}⚠ Unknown chipset. Defaulting to CPU-only mode${NC}"
         return 2
@@ -44,11 +53,20 @@ install_dependencies() {
     pkg update -y
     pkg upgrade -y
     
-    # Core dependencies
-    pkg install -y git cmake golang python numpy
+    # Core dependencies (numpy removed as it's not available in pkg)
+    pkg install -y git cmake golang python
     
     # Build tools
     pkg install -y clang make pkg-config
+    
+    # Install numpy via pip if needed
+    echo -e "${YELLOW}Checking for numpy...${NC}"
+    if ! python -c "import numpy" 2>/dev/null; then
+        echo "Installing numpy via pip..."
+        pip install numpy || echo -e "${YELLOW}Note: numpy is optional, continuing...${NC}"
+    else
+        echo -e "${GREEN}✓ numpy already installed${NC}"
+    fi
     
     # GPU libraries
     detect_chipset
