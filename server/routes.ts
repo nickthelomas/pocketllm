@@ -627,6 +627,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
             isAvailable: true,
             parameters: { path: localModel.path },
           });
+        } else if (existing.provider === "local-file") {
+          // Backfill path for existing local-file models that may be missing it
+          const params = (existing.parameters as any) ?? {};
+          if (!params.path) {
+            console.log(`🔧 Backfilling path for local-file model: ${localModel.name}`);
+            await storage.updateModel(existing.id, {
+              parameters: { ...params, path: localModel.path }
+            });
+          }
         }
         syncedModels.push({
           name: localModel.name,
@@ -1088,7 +1097,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 name: modelName,
                 provider: "local-file",
                 isAvailable: true,
-                parameters: { source: "huggingface-auto" },
+                parameters: { 
+                  source: "huggingface-auto",
+                  path: targetPath 
+                },
               });
             }
             
