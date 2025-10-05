@@ -26,7 +26,7 @@ Pocket LLM is a local-first, full-stack LLM application designed for mobile use 
 - **Fixed Model Auto-Selection**: Corrected initial state to allow proper smallest model selection on startup
 - **Fixed Settings Save**: Resolved null value database errors by converting nulls to empty strings
 
-### GPU Acceleration Support (October 4, 2025)
+### GPU Acceleration Support (October 4-5, 2025)
 - **Settings UI**: Added comprehensive GPU configuration in Settings modal
   - Enable/disable GPU acceleration toggle
   - GPU layers slider (0-32) for layer offloading
@@ -34,12 +34,21 @@ Pocket LLM is a local-first, full-stack LLM application designed for mobile use 
   - CPU threads configuration
   - Batch size settings
   - Low VRAM mode for mobile devices
-- **Termux Setup Script**: Created `scripts/termux-gpu-setup.sh` for mobile GPU optimization
-  - Auto-detects chipset (Snapdragon vs Exynos)
+- **Termux Setup Script**: Enhanced `scripts/termux-gpu-setup.sh` for mobile GPU optimization
+  - Auto-detects chipset without dumpsys (works in Termux)
+  - Handles numpy installation via pip
   - Installs appropriate GPU libraries (OpenCL/Vulkan)
   - Compiles llama.cpp with GPU support
   - Configures optimal settings per device type
   - Provides device-specific optimization tips
+- **Auto GPU on Startup**: Modified `termux-start.sh` to automatically use GPU settings
+- **Performance Monitor**: Added `scripts/termux-monitor.sh` for real-time monitoring
+  - CPU usage with visual progress bars
+  - Memory usage tracking
+  - GPU utilization (when available)
+  - Ollama and backend service status
+  - Battery level monitoring
+- **GPU Verification Tool**: Created `scripts/verify-gpu.sh` to check GPU setup
 
 ## Recent Changes (October 2025)
 
