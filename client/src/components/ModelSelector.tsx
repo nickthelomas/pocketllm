@@ -484,25 +484,28 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4" data-testid="tabs-provider">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="local" data-testid="tab-local">
+        <TabsList className="inline-flex w-auto min-w-full overflow-x-auto">
+          <TabsTrigger value="local" data-testid="tab-local" className="flex-shrink-0">
             Local
           </TabsTrigger>
           <TabsTrigger 
             value="cloud" 
             data-testid="tab-cloud"
+            className="flex-shrink-0"
           >
             Cloud
           </TabsTrigger>
           <TabsTrigger 
             value="favourites" 
             data-testid="tab-favourites"
+            className="flex-shrink-0"
           >
             Favourites
           </TabsTrigger>
           <TabsTrigger 
             value="remote" 
             data-testid="tab-remote"
+            className="flex-shrink-0"
           >
             Remote
           </TabsTrigger>
