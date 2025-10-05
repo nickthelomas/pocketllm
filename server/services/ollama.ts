@@ -53,6 +53,10 @@ export class OllamaService {
     this.baseUrl = baseUrl;
   }
 
+  getBaseUrl(): string {
+    return this.baseUrl;
+  }
+
   getLoadedModel(): string | null {
     return this.loadedModel;
   }

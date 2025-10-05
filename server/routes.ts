@@ -1154,6 +1154,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Handle local-file models - import into Ollama if needed
       if (modelInfo.provider === "local-file") {
         const ollama = await getOllamaService();
+        
+        // Check if GPU bridge is active (it serves GGUF files directly without Ollama import)
+        let isGpuBridge = false;
+        try {
+          const baseUrl = ollama.getBaseUrl();
+          const healthResponse = await fetch(`${baseUrl}/api/health`, {
+            method: "GET",
+            signal: AbortSignal.timeout(2000),
+          });
+          if (healthResponse.ok) {
+            const healthData = await healthResponse.json();
+            isGpuBridge = healthData.gpu_enabled === true;
+            console.log(`🔍 GPU bridge detection: gpu_enabled=${isGpuBridge}`);
+          }
+        } catch (error) {
+          // If health check fails, assume standard Ollama
+          console.log('Health check failed, assuming standard Ollama:', error);
+        }
+        
+        if (isGpuBridge) {
+          // GPU bridge serves GGUF files directly - no import needed, just mark as loaded
+          console.log(`✅ GPU bridge mode detected - model ready: "${name}"`);
+          ollama.setLoadedModel(name);
+          
+          return res.json({ 
+            success: true, 
+            model: name,
+            message: `GPU-accelerated model ${name} ready` 
+          });
+        }
+        
+        // Standard Ollama: check if model needs to be imported
         const ollamaModels = await ollama.listModels();
         const existsInOllama = ollamaModels.some(m => m.name === name);
         
