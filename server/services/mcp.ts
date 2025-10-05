@@ -95,9 +95,12 @@ class McpService {
         };
 
       case "calculate":
+        // Safe mathematical expression evaluation
+        const expr = args.expression || "0";
+        const safeResult = this.safeCalculate(expr);
         return {
-          expression: args.expression || "0",
-          result: eval(args.expression || "0"), // Note: eval is dangerous in production!
+          expression: expr,
+          result: safeResult,
         };
 
       case "fetch_data":
@@ -146,6 +149,83 @@ class McpService {
       server,
       tools: (server.tools as string[]) || [],
     }));
+  }
+
+  /**
+   * Safely evaluate basic mathematical expressions
+   * Only supports numbers and basic operators: +, -, *, /, (, )
+   */
+  private safeCalculate(expression: string): number | string {
+    try {
+      // Remove all whitespace
+      const cleaned = expression.replace(/\s/g, '');
+      
+      // Check if expression only contains safe characters
+      if (!/^[\d+\-*/().,]+$/.test(cleaned)) {
+        return "Error: Invalid characters in expression";
+      }
+      
+      // Basic recursive descent parser for mathematical expressions
+      // This is a simple implementation that handles basic operations safely
+      const parse = (expr: string): number => {
+        // Remove outer parentheses if they exist
+        expr = expr.trim();
+        while (expr.startsWith('(') && expr.endsWith(')')) {
+          let depth = 0;
+          let valid = true;
+          for (let i = 0; i < expr.length - 1; i++) {
+            if (expr[i] === '(') depth++;
+            if (expr[i] === ')') depth--;
+            if (depth === 0 && i < expr.length - 1) {
+              valid = false;
+              break;
+            }
+          }
+          if (valid) {
+            expr = expr.substring(1, expr.length - 1);
+          } else {
+            break;
+          }
+        }
+        
+        // Handle addition and subtraction (lowest precedence)
+        for (let i = expr.length - 1; i >= 0; i--) {
+          if (expr[i] === '+' || expr[i] === '-') {
+            // Check if it's not part of a number (e.g., -5)
+            if (i > 0 && !/[\+\-\*\/\(]/.test(expr[i-1])) {
+              const left = parse(expr.substring(0, i));
+              const right = parse(expr.substring(i + 1));
+              return expr[i] === '+' ? left + right : left - right;
+            }
+          }
+        }
+        
+        // Handle multiplication and division (higher precedence)
+        for (let i = expr.length - 1; i >= 0; i--) {
+          if (expr[i] === '*' || expr[i] === '/') {
+            const left = parse(expr.substring(0, i));
+            const right = parse(expr.substring(i + 1));
+            if (expr[i] === '/') {
+              if (right === 0) throw new Error("Division by zero");
+              return left / right;
+            }
+            return left * right;
+          }
+        }
+        
+        // Parse number
+        const num = parseFloat(expr);
+        if (isNaN(num)) {
+          throw new Error(`Invalid number: ${expr}`);
+        }
+        return num;
+      };
+      
+      const result = parse(cleaned);
+      return isNaN(result) ? "Error: Invalid expression" : result;
+    } catch (error) {
+      return `Error: ${error instanceof Error ? error.message : "Invalid expression"}`;
+    }
   }
 
   /**
