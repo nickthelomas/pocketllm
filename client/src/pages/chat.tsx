@@ -17,7 +17,8 @@ import {
   Upload,
   Lightbulb,
   Activity,
-  FileStack
+  FileStack,
+  Download
 } from "lucide-react";
 import type { RagDocument } from "@shared/schema";
 
