@@ -8,6 +8,8 @@ import { ollamaService } from "./services/ollama";
 import { modelDirectoryScanner } from "./services/modelDirectory";
 import { createMemoryManager } from "./services/memoryManager";
 import { contextBuilder } from "./services/contextBuilder";
+import { promises as fs } from "fs";
+import path from "path";
 
 // Helper to get Ollama service with configured base URL
 async function getOllamaService() {
@@ -15,6 +17,46 @@ async function getOllamaService() {
   const baseUrl = baseApiUrlSetting?.value ? String(baseApiUrlSetting.value) : "http://127.0.0.1:11434";
   ollamaService.setBaseUrl(baseUrl);
   return ollamaService;
+}
+
+// Map Ollama model names to HuggingFace GGUF downloads for GPU bridge
+function getHuggingFaceGGUF(modelName: string): { url: string; filename: string } | null {
+  const mappings: Record<string, { url: string; filename: string }> = {
+    "tinyllama": {
+      url: "https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+      filename: "tinyllama.gguf"
+    },
+    "tinyllama:latest": {
+      url: "https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+      filename: "tinyllama.gguf"
+    },
+    "phi3:mini": {
+      url: "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf",
+      filename: "phi3-mini.gguf"
+    },
+    "phi3": {
+      url: "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf",
+      filename: "phi3-mini.gguf"
+    },
+    "llama3.2:1b": {
+      url: "https://huggingface.co/lmstudio-community/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+      filename: "llama3.2-1b.gguf"
+    },
+    "llama3.2:3b": {
+      url: "https://huggingface.co/lmstudio-community/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+      filename: "llama3.2-3b.gguf"
+    },
+    "nomic-embed-text": {
+      url: "https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5.Q4_K_M.gguf",
+      filename: "nomic-embed-text.gguf"
+    },
+    "nomic-embed-text:latest": {
+      url: "https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5.Q4_K_M.gguf",
+      filename: "nomic-embed-text.gguf"
+    }
+  };
+  
+  return mappings[modelName.toLowerCase()] || null;
 }
 
 // File upload configuration
@@ -82,7 +124,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         if (modelInfo?.provider === "openrouter") {
           // Cloud model - check if API key is configured
-          const apiKeySetting = await storage.getSetting(null, "openrouter_api_key");
+          const apiKeySetting = await storage.getSetting(undefined, "openrouter_api_key");
           const apiKey = apiKeySetting?.value ? String(apiKeySetting.value) : "";
           
           if (apiKey && apiKey.trim()) {
@@ -94,7 +136,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         } else if (modelInfo?.provider === "remote-ollama") {
           // Remote model - check if remote URL is configured
-          const remoteUrlSetting = await storage.getSetting(null, "remote_ollama_url");
+          const remoteUrlSetting = await storage.getSetting(undefined, "remote_ollama_url");
           const remoteUrl = remoteUrlSetting?.value ? String(remoteUrlSetting.value) : "";
           
           if (remoteUrl && remoteUrl.trim()) {
@@ -613,7 +655,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 parameters: { 
                   brand: orModel.brand,
                   pricing: orModel.pricing,
-                  context_length: orModel.context_length 
+                  contextLength: orModel.contextLength 
                 },
               });
             } else {
@@ -623,7 +665,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 parameters: { 
                   brand: orModel.brand,
                   pricing: orModel.pricing,
-                  context_length: orModel.context_length 
+                  contextLength: orModel.contextLength 
                 },
               });
             }
@@ -935,46 +977,132 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Ollama registry pull (default)
       console.log(`🔄 Starting Ollama pull for: ${name}`);
-      let progressReceived = false;
       
-      await ollama.pullModel(name, (progress, status) => {
-        progressReceived = true;
-        console.log(`📊 Pull progress: ${progress.toFixed(1)}% - ${status}`);
-        res.write(`data: ${JSON.stringify({ progress, status })}\n\n`);
-      });
-
-      console.log(`✅ Pull completed. Progress updates received: ${progressReceived}`);
-
-      // Verify model exists in Ollama before marking as available
-      const ollamaModels = await ollama.listModels();
-      console.log(`🔍 Ollama has ${ollamaModels.length} models:`, ollamaModels.map(m => m.name));
-      
-      const modelInOllama = ollamaModels.some(m => m.name === name);
-      console.log(`✓ Model "${name}" in Ollama: ${modelInOllama}`);
-      
-      if (!modelInOllama) {
-        throw new Error("Model pull completed but model not found in Ollama. Try syncing models.");
-      }
-
-      // Only add model to storage AFTER successful pull and verification
-      // Check if model already exists to prevent duplicates
-      const existingModels = await storage.getModels();
-      const modelExists = existingModels.some(m => m.name === name);
-      
-      if (!modelExists) {
-        console.log(`➕ Adding model to database: ${name}`);
-        await storage.createModel({
-          name,
-          provider: "ollama",
-          isAvailable: true,
-          parameters: null,
+      try {
+        let progressReceived = false;
+        
+        await ollama.pullModel(name, (progress, status) => {
+          progressReceived = true;
+          console.log(`📊 Pull progress: ${progress.toFixed(1)}% - ${status}`);
+          res.write(`data: ${JSON.stringify({ progress, status })}\n\n`);
         });
-      } else {
-        console.log(`ℹ️  Model already in database: ${name}`);
-      }
 
-      res.write(`data: [DONE]\n\n`);
-      res.end();
+        console.log(`✅ Pull completed. Progress updates received: ${progressReceived}`);
+
+        // Verify model exists in Ollama before marking as available
+        const ollamaModels = await ollama.listModels();
+        console.log(`🔍 Ollama has ${ollamaModels.length} models:`, ollamaModels.map(m => m.name));
+        
+        const modelInOllama = ollamaModels.some(m => m.name === name);
+        console.log(`✓ Model "${name}" in Ollama: ${modelInOllama}`);
+        
+        if (!modelInOllama) {
+          throw new Error("Model pull completed but model not found in Ollama. Try syncing models.");
+        }
+
+        // Only add model to storage AFTER successful pull and verification
+        const existingModels = await storage.getModels();
+        const modelExists = existingModels.some(m => m.name === name);
+        
+        if (!modelExists) {
+          console.log(`➕ Adding model to database: ${name}`);
+          await storage.createModel({
+            name,
+            provider: "ollama",
+            isAvailable: true,
+            parameters: null,
+          });
+        } else {
+          console.log(`ℹ️  Model already in database: ${name}`);
+        }
+
+        res.write(`data: [DONE]\n\n`);
+        res.end();
+      } catch (pullError) {
+        // If pull fails and we have a HuggingFace mapping, download GGUF directly
+        console.log(`⚠️  Ollama pull failed: ${pullError instanceof Error ? pullError.message : String(pullError)}`);
+        
+        const ggufMapping = getHuggingFaceGGUF(name);
+        if (ggufMapping) {
+          console.log(`🔄 Attempting direct GGUF download for GPU bridge...`);
+          
+          try {
+            // Determine models directory (Termux or local)
+            const modelsDir = process.env.HOME 
+              ? path.join(process.env.HOME, 'PocketLLM', 'models')
+              : path.join(process.cwd(), 'models');
+            
+            await fs.mkdir(modelsDir, { recursive: true });
+            
+            const targetPath = path.join(modelsDir, ggufMapping.filename);
+            
+            // Check if already exists
+            try {
+              await fs.access(targetPath);
+              console.log(`ℹ️  Model already exists at: ${targetPath}`);
+              res.write(`data: ${JSON.stringify({ progress: 100, status: 'already exists' })}\n\n`);
+            } catch {
+              // Download the GGUF file
+              console.log(`📥 Downloading from: ${ggufMapping.url}`);
+              res.write(`data: ${JSON.stringify({ progress: 0, status: 'downloading GGUF' })}\n\n`);
+              
+              const response = await fetch(ggufMapping.url);
+              if (!response.ok) {
+                throw new Error(`Download failed: ${response.statusText}`);
+              }
+              
+              const totalSize = parseInt(response.headers.get('content-length') || '0');
+              let downloadedSize = 0;
+              
+              const fileHandle = await fs.open(targetPath, 'w');
+              const reader = response.body?.getReader();
+              
+              if (!reader) throw new Error('No response body');
+              
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                
+                await fileHandle.write(value);
+                downloadedSize += value.length;
+                const progress = totalSize > 0 ? (downloadedSize / totalSize) * 100 : 0;
+                
+                res.write(`data: ${JSON.stringify({ 
+                  progress: Math.round(progress), 
+                  status: `downloading ${(downloadedSize / 1024 / 1024).toFixed(1)}MB / ${(totalSize / 1024 / 1024).toFixed(1)}MB` 
+                })}\n\n`);
+              }
+              
+              await fileHandle.close();
+              console.log(`✅ Download complete: ${targetPath}`);
+            }
+            
+            // Add to database
+            const existingModels = await storage.getModels();
+            const modelName = ggufMapping.filename.replace('.gguf', '');
+            const modelExists = existingModels.some(m => m.name === modelName);
+            
+            if (!modelExists) {
+              console.log(`➕ Adding model to database: ${modelName}`);
+              await storage.createModel({
+                name: modelName,
+                provider: "local-file",
+                isAvailable: true,
+                parameters: { source: "huggingface-auto" },
+              });
+            }
+            
+            res.write(`data: [DONE]\n\n`);
+            res.end();
+          } catch (downloadError) {
+            console.error(`❌ Direct download failed:`, downloadError);
+            throw downloadError;
+          }
+        } else {
+          // No mapping available, re-throw original error
+          throw pullError;
+        }
+      }
     } catch (error) {
       console.error(`❌ Pull error:`, error);
       res.write(`data: ${JSON.stringify({ error: error instanceof Error ? error.message : String(error) })}\n\n`);
