@@ -102,7 +102,12 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
   useEffect(() => {
     if (selectedModel) {
       localStorage.setItem("selectedModel", selectedModel);
-      loadModelMutation.mutate(selectedModel);
+      // Only load model if it's changed from the previous value
+      const previousModel = localStorage.getItem("previousModel");
+      if (selectedModel !== previousModel) {
+        localStorage.setItem("previousModel", selectedModel);
+        loadModelMutation.mutate(selectedModel);
+      }
     }
   }, [selectedModel]);
 
