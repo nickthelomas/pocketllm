@@ -148,7 +148,16 @@ export class OllamaService {
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to pull model: ${response.statusText}`);
+        let errorMessage = `Failed to pull model: ${response.statusText}`;
+        try {
+          const errorData = await response.json();
+          if (errorData.error) {
+            errorMessage = errorData.error;
+          }
+        } catch (e) {
+          // If we can't parse the error response, use the status text
+        }
+        throw new Error(errorMessage);
       }
 
       const reader = response.body?.getReader();
@@ -169,11 +178,20 @@ export class OllamaService {
           if (!line.trim()) continue;
           try {
             const data = JSON.parse(line);
+            
+            // Check for error in streaming response
+            if (data.error) {
+              throw new Error(data.error);
+            }
+            
             if (data.status && onProgress) {
               const progress = data.completed && data.total ? (data.completed / data.total) * 100 : 0;
               onProgress(progress, data.status);
             }
           } catch (e) {
+            if (e instanceof Error && e.message !== "Unexpected end of JSON input") {
+              throw e;
+            }
             console.error("Failed to parse pull progress:", e);
           }
         }
