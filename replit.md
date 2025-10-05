@@ -5,6 +5,19 @@ Pocket LLM is a local-first, full-stack LLM application designed for mobile use 
 
 ## Recent Changes (October 2025)
 
+### MCP Tool Execution Implementation (October 5, 2025)
+- **Backend MCP Service**: Created secure tool execution service with demo tools
+  - Safe mathematical expression parser (no eval vulnerability)
+  - Demo tools: search, calculate, weather, fetch_data, code_execution
+  - Tool validation and server status checking
+- **API Endpoints**: Added `/api/mcp/tools/execute` and `/api/mcp/servers/:id/test`
+- **Frontend Integration**: Updated MCPToolsDialog with full API integration
+  - Real-time tool execution with loading states
+  - Result display with JSON formatting
+  - Toast notifications for success/failure
+  - Server management through Settings modal
+- **Security**: Fixed critical eval() vulnerability with safe expression parser
+
 ### Bug Fixes and UI Improvements (October 4, 2025)
 - **Fixed Model Loading Timeout**: Extended timeout from 30s to 60s with loading spinner and toast notifications
 - **Fixed Health Monitor**: Now correctly tracks and displays actual loaded model state with auto-refresh
