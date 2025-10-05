@@ -31,13 +31,21 @@ show_header() {
 check_prerequisites() {
     echo -e "${BLUE}Checking prerequisites...${NC}"
     
-    # Check llama.cpp
-    if [ ! -f "$HOME/llama.cpp/build/bin/main" ]; then
+    # Check llama.cpp (handle both main and llama-cli)
+    if [ -f "$HOME/llama.cpp/build/bin/main" ]; then
+        echo -e "${GREEN}✓ llama.cpp found (main)${NC}"
+    elif [ -f "$HOME/llama.cpp/build/bin/llama-cli" ]; then
+        echo -e "${GREEN}✓ llama.cpp found (llama-cli)${NC}"
+        # Create symlink for compatibility
+        if [ ! -f "$HOME/llama.cpp/build/bin/main" ]; then
+            ln -sf "$HOME/llama.cpp/build/bin/llama-cli" "$HOME/llama.cpp/build/bin/main"
+            echo -e "${YELLOW}  Created symlink: main -> llama-cli${NC}"
+        fi
+    else
         echo -e "${RED}✗ llama.cpp not found${NC}"
         echo "Run: bash scripts/termux-gpu-setup.sh"
         return 1
     fi
-    echo -e "${GREEN}✓ llama.cpp found${NC}"
     
     # Check for models
     if [ -z "$(ls -A $PROJECT_DIR/models/*.gguf 2>/dev/null)" ]; then

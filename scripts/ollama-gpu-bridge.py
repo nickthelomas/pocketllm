@@ -5,20 +5,32 @@ Provides the same API endpoints as Ollama but uses llama.cpp directly
 """
 
 import os
+import sys
 import json
 import time
 import subprocess
 import threading
 import queue
 import hashlib
+import traceback
 from pathlib import Path
 from typing import Optional, Dict, List, Generator
 from flask import Flask, request, jsonify, Response, stream_with_context
 from flask_cors import CORS
 import logging
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging to both file and console
+LOG_FILE = Path.home() / "PocketLLM" / "logs" / "gpu-bridge.log"
+LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(LOG_FILE),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
@@ -28,7 +40,26 @@ CORS(app)
 LLAMA_BIN = Path.home() / "llama.cpp" / "build" / "bin" / "main"
 MODELS_DIR = Path.home() / "PocketLLM" / "models"
 CONFIG_DIR = Path.home() / ".ollama-bridge"
-CONFIG_DIR.mkdir(exist_ok=True)
+
+# Create directories if they don't exist
+try:
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+except Exception as e:
+    logger.error(f"Failed to create directories: {e}")
+    sys.exit(1)
+
+# Check if llama.cpp binary exists
+if not LLAMA_BIN.exists():
+    # Try alternative location (symlink)
+    LLAMA_BIN_ALT = Path.home() / "llama.cpp" / "build" / "bin" / "llama-cli"
+    if LLAMA_BIN_ALT.exists():
+        logger.info(f"Using alternative binary: {LLAMA_BIN_ALT}")
+        LLAMA_BIN = LLAMA_BIN_ALT
+    else:
+        logger.error(f"llama.cpp binary not found at {LLAMA_BIN} or {LLAMA_BIN_ALT}")
+        logger.error("Please run: bash scripts/termux-gpu-setup.sh")
+        sys.exit(1)
 
 # Default GPU settings
 DEFAULT_GPU_LAYERS = 16
@@ -627,17 +658,44 @@ if __name__ == '__main__':
     import atexit
     import signal
     
-    # Register cleanup
-    atexit.register(cleanup)
-    signal.signal(signal.SIGINT, lambda s, f: cleanup() or exit(0))
-    signal.signal(signal.SIGTERM, lambda s, f: cleanup() or exit(0))
-    
-    # Initial model scan
-    scan_models()
-    
-    logger.info(f"Starting Ollama GPU Bridge on port 11434")
-    logger.info(f"Models directory: {MODELS_DIR}")
-    logger.info(f"Available models: {list(MODEL_REGISTRY.keys())}")
-    
-    # Run server
-    app.run(host='127.0.0.1', port=11434, debug=False, threaded=True)
+    try:
+        logger.info("="*60)
+        logger.info("Starting Ollama GPU Bridge")
+        logger.info("="*60)
+        
+        # Check environment
+        logger.info(f"Python version: {sys.version}")
+        logger.info(f"Working directory: {os.getcwd()}")
+        logger.info(f"Models directory: {MODELS_DIR}")
+        logger.info(f"llama.cpp binary: {LLAMA_BIN}")
+        
+        # Check if binary is executable
+        if not os.access(LLAMA_BIN, os.X_OK):
+            logger.error(f"Binary not executable: {LLAMA_BIN}")
+            sys.exit(1)
+        
+        # Register cleanup
+        atexit.register(cleanup)
+        signal.signal(signal.SIGINT, lambda s, f: cleanup() or exit(0))
+        signal.signal(signal.SIGTERM, lambda s, f: cleanup() or exit(0))
+        
+        # Initial model scan
+        logger.info("Scanning for models...")
+        scan_models()
+        
+        if not MODEL_REGISTRY:
+            logger.warning("No models found in registry!")
+            logger.warning(f"Check models directory: {MODELS_DIR}")
+        else:
+            logger.info(f"Found {len(set(MODEL_REGISTRY.values()))} unique models")
+            logger.info(f"Model names: {list(MODEL_REGISTRY.keys())[:5]}...")
+        
+        logger.info(f"Starting server on http://127.0.0.1:11434")
+        
+        # Run server
+        app.run(host='127.0.0.1', port=11434, debug=False, threaded=True, use_reloader=False)
+        
+    except Exception as e:
+        logger.error(f"Failed to start GPU bridge: {e}")
+        logger.error(traceback.format_exc())
+        sys.exit(1)
