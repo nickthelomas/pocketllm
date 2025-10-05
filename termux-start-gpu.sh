@@ -100,9 +100,9 @@ start_gpu_bridge() {
         echo "  Threads: $(nproc)"
     fi
     
-    # Start the bridge in background
+    # Start the bridge in background (v2 - simplified version)
     cd "$PROJECT_DIR"
-    nohup python3 scripts/ollama-gpu-bridge.py \
+    nohup python3 scripts/ollama-gpu-bridge-v2.py \
         > "$LOG_DIR/gpu-bridge.log" 2>&1 &
     
     echo $! > "$PID_DIR/gpu-bridge.pid"

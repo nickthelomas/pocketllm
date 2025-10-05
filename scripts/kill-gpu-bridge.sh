@@ -3,8 +3,9 @@
 # Kill all GPU bridge related processes
 echo "Killing all GPU bridge processes..."
 
-# Kill Python GPU bridge
+# Kill Python GPU bridge (both versions)
 pkill -f "ollama-gpu-bridge.py" 2>/dev/null && echo "  - Stopped GPU bridge"
+pkill -f "ollama-gpu-bridge-v2.py" 2>/dev/null && echo "  - Stopped GPU bridge v2"
 
 # Kill any llama.cpp processes
 pkill -f "main.*gguf" 2>/dev/null && echo "  - Stopped llama.cpp main"

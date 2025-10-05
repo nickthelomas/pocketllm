@@ -56,9 +56,9 @@ cd ~/PocketLLM
 # Create logs directory if it doesn't exist
 mkdir -p logs
 
-# Run the bridge with output visible
-echo -e "${YELLOW}Starting bridge (press Ctrl+C to stop)...${NC}"
-python3 scripts/ollama-gpu-bridge.py 2>&1 | tee logs/gpu-bridge-debug.log &
+# Run the bridge with output visible (using v2 - simplified version)
+echo -e "${YELLOW}Starting bridge v2 (press Ctrl+C to stop)...${NC}"
+python3 scripts/ollama-gpu-bridge-v2.py 2>&1 | tee logs/gpu-bridge-debug.log &
 BRIDGE_PID=$!
 
 # Wait for it to start
