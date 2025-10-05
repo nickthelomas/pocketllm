@@ -8,6 +8,7 @@ import { Download, Loader2, RefreshCw, Wifi, WifiOff, Star } from "lucide-react"
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import CloudModelPasswordDialog from "@/components/CloudModelPasswordDialog";
+import DownloadsPanel from "@/components/DownloadsPanel";
 import type { Model } from "@shared/schema";
 
 interface ModelSelectorProps {
@@ -512,7 +513,26 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
         </TabsList>
 
         <TabsContent value="local" className="mt-3">
-          {getTabContent(localModels, "local")}
+          <Tabs defaultValue="models" className="w-full">
+            <TabsList className="grid w-full grid-cols-2 mb-3">
+              <TabsTrigger value="models" data-testid="tab-local-models">
+                Models
+              </TabsTrigger>
+              <TabsTrigger value="downloads" data-testid="tab-local-downloads">
+                Downloads
+              </TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="models" className="mt-0" data-testid="content-local-models">
+              {getTabContent(localModels, "local")}
+            </TabsContent>
+            
+            <TabsContent value="downloads" className="mt-0" data-testid="content-local-downloads">
+              <div className="max-h-[400px] overflow-y-auto">
+                <DownloadsPanel />
+              </div>
+            </TabsContent>
+          </Tabs>
         </TabsContent>
 
         <TabsContent value="cloud" className="mt-3">
