@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import ModelSelector from "@/components/ModelSelector";
 import ConversationList from "@/components/ConversationList";
+import DownloadsPanel from "@/components/DownloadsPanel";
 import ChatArea from "@/components/ChatArea";
 import RAGPanel from "@/components/RAGPanel";
 import SettingsModal from "@/components/SettingsModal";
@@ -9,6 +10,7 @@ import SystemHealthViewer from "@/components/SystemHealthViewer";
 import ThemeToggle from "@/components/ThemeToggle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarTrigger } from "@/components/ui/sidebar";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -18,7 +20,8 @@ import {
   Upload,
   Lightbulb,
   Activity,
-  FileStack
+  FileStack,
+  MessageSquare
 } from "lucide-react";
 import type { RagDocument } from "@shared/schema";
 
@@ -158,10 +161,30 @@ export default function Chat() {
                   onModelChange={setSelectedModel}
                 />
               </div>
-              <ConversationList 
-                selectedConversationId={selectedConversationId}
-                onSelectConversation={setSelectedConversationId}
-              />
+              
+              <Tabs defaultValue="conversations" className="flex-1 flex flex-col overflow-hidden">
+                <TabsList className="grid w-full grid-cols-2 mx-4 my-2" data-testid="tabs-sidebar">
+                  <TabsTrigger value="conversations" data-testid="tab-conversations">
+                    <MessageSquare className="w-4 h-4 mr-2" />
+                    Chats
+                  </TabsTrigger>
+                  <TabsTrigger value="downloads" data-testid="tab-downloads">
+                    <Download className="w-4 h-4 mr-2" />
+                    Downloads
+                  </TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="conversations" className="flex-1 overflow-hidden m-0" data-testid="content-conversations">
+                  <ConversationList 
+                    selectedConversationId={selectedConversationId}
+                    onSelectConversation={setSelectedConversationId}
+                  />
+                </TabsContent>
+                
+                <TabsContent value="downloads" className="flex-1 overflow-hidden m-0" data-testid="content-downloads">
+                  <DownloadsPanel />
+                </TabsContent>
+              </Tabs>
             </SidebarContent>
           </Sidebar>
 

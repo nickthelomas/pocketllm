@@ -7,6 +7,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Download, Loader2, RefreshCw, Wifi, WifiOff } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import CloudModelPasswordDialog from "@/components/CloudModelPasswordDialog";
 import type { Model } from "@shared/schema";
 
 interface ModelSelectorProps {
@@ -39,6 +40,8 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
   const [showCatalog, setShowCatalog] = useState(false);
   const [pullError, setPullError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("local");
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [pendingModel, setPendingModel] = useState<string | null>(null);
 
   const { data: models = [], isLoading: modelsLoading } = useQuery<Model[]>({
     queryKey: ["/api/models"],
@@ -181,6 +184,13 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
 
   const pullModelMutation = useMutation({
     mutationFn: async ({ name, source, downloadUrl }: { name: string; source: string; downloadUrl?: string }) => {
+      const downloadId = `${name}-${Date.now()}`;
+      
+      // Emit initial download event
+      window.dispatchEvent(new CustomEvent('download-update', {
+        detail: { id: downloadId, name, status: 'downloading', progress: 0 }
+      }));
+
       const response = await fetch("/api/models/pull", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -189,23 +199,88 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
 
       if (response.status === 503) {
         const error = await response.json();
+        window.dispatchEvent(new CustomEvent('download-update', {
+          detail: { id: downloadId, name, status: 'error', progress: 0, error: error.message }
+        }));
         throw new Error(error.message || "Network unavailable");
       }
 
-      if (!response.ok) throw new Error("Failed to start download");
+      if (!response.ok) {
+        window.dispatchEvent(new CustomEvent('download-update', {
+          detail: { id: downloadId, name, status: 'error', progress: 0, error: 'Failed to start download' }
+        }));
+        throw new Error("Failed to start download");
+      }
 
-      // Start download in background - don't wait for completion
-      // The backend will handle the download asynchronously
-      return { name };
+      // Read SSE progress stream
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      if (reader) {
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
+
+            for (const line of lines) {
+              if (!line.trim() || !line.startsWith("data: ")) continue;
+              
+              const data = line.slice(6);
+              if (data === "[DONE]") {
+                window.dispatchEvent(new CustomEvent('download-update', {
+                  detail: { id: downloadId, name, status: 'complete', progress: 100 }
+                }));
+                break;
+              }
+
+              try {
+                const parsed = JSON.parse(data);
+                if (parsed.status && parsed.progress !== undefined) {
+                  window.dispatchEvent(new CustomEvent('download-update', {
+                    detail: { 
+                      id: downloadId, 
+                      name, 
+                      status: parsed.status, 
+                      progress: Math.min(parsed.progress, 100) 
+                    }
+                  }));
+                }
+                if (parsed.error) {
+                  window.dispatchEvent(new CustomEvent('download-update', {
+                    detail: { id: downloadId, name, status: 'error', progress: 0, error: parsed.error }
+                  }));
+                  throw new Error(parsed.error);
+                }
+              } catch (e) {
+                // Skip invalid JSON
+              }
+            }
+          }
+        } catch (error) {
+          window.dispatchEvent(new CustomEvent('download-update', {
+            detail: { id: downloadId, name, status: 'error', progress: 0, error: 'Download interrupted' }
+          }));
+          throw error;
+        }
+      }
+
+      return { name, downloadId };
     },
     onSuccess: (data) => {
       setShowCatalog(false);
       toast({
-        title: "Download Started",
-        description: `${data.name} is downloading in the background. You can continue using the app. Sync models when download completes.`,
-        duration: 5000,
+        title: "Download Complete",
+        description: `${data.name} downloaded successfully. Syncing models...`,
+        duration: 3000,
       });
       setPullError(null);
+      // Auto-sync after download completes
+      setTimeout(() => syncModelsMutation.mutate(), 500);
     },
     onError: (error) => {
       toast({
@@ -217,16 +292,38 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
     },
   });
 
-  const handleModelSelect = (value: string) => {
+  const handleModelSelect = async (value: string) => {
     const modelExists = availableModels.some(m => m.name === value);
-    if (modelExists) {
-      onModelChange(value);
-    } else {
+    if (!modelExists) {
       toast({
         title: "Model not found locally",
         description: "Please sync or pull the model first.",
         variant: "destructive",
       });
+      return;
+    }
+
+    // Check if password protection is enabled for cloud models
+    const model = availableModels.find(m => m.name === value);
+    const isCloudModel = model?.provider === "openrouter";
+
+    if (isCloudModel) {
+      try {
+        const response = await fetch("/api/auth/cloud-password-enabled");
+        const data = await response.json();
+        
+        if (data.enabled) {
+          setPendingModel(value);
+          setShowPasswordDialog(true);
+        } else {
+          onModelChange(value);
+        }
+      } catch (error) {
+        // If API fails, allow selection (fail open)
+        onModelChange(value);
+      }
+    } else {
+      onModelChange(value);
     }
   };
 
@@ -573,6 +670,22 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Password Protection Dialog */}
+      <CloudModelPasswordDialog
+        isOpen={showPasswordDialog}
+        onClose={() => {
+          setShowPasswordDialog(false);
+          setPendingModel(null);
+        }}
+        onSuccess={() => {
+          if (pendingModel) {
+            onModelChange(pendingModel);
+            setPendingModel(null);
+          }
+        }}
+        modelName={pendingModel || ""}
+      />
     </div>
   );
 }

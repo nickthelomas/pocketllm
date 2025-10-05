@@ -291,6 +291,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Helper function to clean up response artifacts
+  function cleanResponse(text: string): string {
+    return text
+      .replace(/>\s*EOF\s+by\s+user/gi, '')  // Remove ">EOF by user" artifacts
+      .replace(/>\s*EOF\s*/gi, '')            // Remove ">EOF" alone
+      .trim();
+  }
+
   // Streaming chat endpoint - LOCAL ONLY using Ollama
   app.post("/api/chat/stream", async (req, res) => {
     try {
@@ -477,11 +485,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.write(`data: ${JSON.stringify({ token: errorMessage, fullResponse: errorMessage })}\n\n`);
       }
 
-      // Save assistant message
+      // Clean and save assistant message
+      const cleanedResponse = cleanResponse(fullResponse);
       await storage.createMessage({
         conversationId,
         role: "assistant",
-        content: fullResponse,
+        content: cleanedResponse,
         model: modelName,
         citations: ragSources || null,
       });
@@ -1014,7 +1023,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Local models need to be loaded into Ollama
+      // Handle local-file models - import into Ollama if needed
+      if (modelInfo.provider === "local-file") {
+        const ollama = await getOllamaService();
+        const ollamaModels = await ollama.listModels();
+        const existsInOllama = ollamaModels.some(m => m.name === name);
+        
+        if (!existsInOllama) {
+          // Import the GGUF file into Ollama
+          const modelPath = modelInfo.parameters?.path;
+          if (!modelPath) {
+            return res.status(400).json({ 
+              error: "Model path not found in database. Please re-sync models." 
+            });
+          }
+          
+          console.log(`📦 Auto-importing local-file model: "${name}"`);
+          await ollama.createModelFromFile(name, modelPath);
+        }
+        
+        // Now load it normally
+        await ollama.loadModel(name);
+        console.log(`✅ Local-file model loaded successfully: "${name}"`);
+        
+        return res.json({ 
+          success: true, 
+          model: name,
+          message: `Model ${name} loaded and ready` 
+        });
+      }
+      
+      // Local Ollama models need to be loaded
       const ollama = await getOllamaService();
       await ollama.loadModel(name);
       
@@ -1192,7 +1231,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/settings", async (req, res) => {
     try {
       const settings = await storage.getSettings();
-      res.json(settings);
+      // Filter out sensitive password data - never send to client
+      const safeSettings = settings.filter(s => s.key !== "cloud_models_password");
+      res.json(safeSettings);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch settings" });
     }
@@ -1395,6 +1436,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
         online: false,
         openrouter: false,
       });
+    }
+  });
+
+  // Secure password verification endpoint
+  app.post("/api/auth/verify-cloud-password", async (req, res) => {
+    try {
+      const { password } = req.body;
+      
+      if (!password) {
+        return res.status(400).json({ error: "Password is required", verified: false });
+      }
+
+      const storedPassword = await storage.getSetting(undefined, "cloud_models_password");
+      const passwordEnabled = await storage.getSetting(undefined, "cloud_models_password_enabled");
+      
+      // If password protection is not enabled, always verify
+      if (passwordEnabled?.value !== true && passwordEnabled?.value !== "true") {
+        return res.json({ verified: true });
+      }
+
+      // Check if the password matches
+      const verified = password === storedPassword?.value;
+      
+      res.json({ verified });
+    } catch (error) {
+      res.status(500).json({ error: "Verification failed", verified: false });
+    }
+  });
+
+  // Check if cloud password is enabled (does NOT return the password)
+  app.get("/api/auth/cloud-password-enabled", async (_req, res) => {
+    try {
+      const passwordEnabled = await storage.getSetting(undefined, "cloud_models_password_enabled");
+      res.json({ 
+        enabled: passwordEnabled?.value === true || passwordEnabled?.value === "true" 
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to check password status", enabled: false });
     }
   });
 

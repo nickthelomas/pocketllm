@@ -201,6 +201,35 @@ export class OllamaService {
     }
   }
 
+  async createModelFromFile(modelName: string, modelPath: string): Promise<void> {
+    try {
+      console.log(`📦 Importing ${modelName} from ${modelPath} into Ollama...`);
+      
+      // Create a Modelfile that references the GGUF file
+      const modelfile = `FROM ${modelPath}`;
+      
+      const response = await fetch(`${this.baseUrl}/api/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: modelName,
+          modelfile: modelfile,
+          stream: false
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to import model: ${response.statusText} - ${errorText}`);
+      }
+
+      console.log(`✅ Model ${modelName} imported successfully into Ollama`);
+    } catch (error) {
+      console.error("Failed to create model from file:", error);
+      throw error;
+    }
+  }
+
   async *generateStream(request: OllamaGenerateRequest): AsyncGenerator<OllamaGenerateChunk> {
     try {
       const response = await fetch(`${this.baseUrl}/api/generate`, {

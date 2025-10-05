@@ -7,9 +7,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { Trash2, Plus, Settings2, User, Zap, Database, Cog } from "lucide-react";
+import { Trash2, Plus, Settings2, User, Zap, Database, Cog, Shield } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -37,6 +38,8 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     bearerToken: "",
     openrouter_api_key: "",
     remote_ollama_url: "",
+    cloud_models_password_enabled: false,
+    cloud_models_password: "",
     userProfile: "",
     chunkSize: 512,
     chunkOverlap: 50,
@@ -133,6 +136,8 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       bearerToken: "",
       openrouter_api_key: "",
       remote_ollama_url: "",
+      cloud_models_password_enabled: false,
+      cloud_models_password: "",
       userProfile: "",
       chunkSize: 512,
       chunkOverlap: 50,
@@ -416,6 +421,42 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   data-testid="input-remote-ollama-url"
                 />
                 <p className="text-xs text-muted-foreground mt-1">URL for remote Ollama server via Tailscale or VPN</p>
+              </div>
+
+              <Separator className="my-6" />
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Shield className="w-5 h-5 text-primary" />
+                    <div>
+                      <Label htmlFor="cloud-password-enabled">Kid-Safe Password Protection</Label>
+                      <p className="text-xs text-muted-foreground">Require password before using paid cloud models</p>
+                    </div>
+                  </div>
+                  <Switch
+                    id="cloud-password-enabled"
+                    checked={settings.cloud_models_password_enabled === true || settings.cloud_models_password_enabled === "true"}
+                    onCheckedChange={(checked) => setSettings(prev => ({ ...prev, cloud_models_password_enabled: checked }))}
+                    data-testid="switch-cloud-password"
+                  />
+                </div>
+
+                {(settings.cloud_models_password_enabled === true || settings.cloud_models_password_enabled === "true") && (
+                  <div>
+                    <Label htmlFor="cloud-password">Cloud Models Password</Label>
+                    <Input
+                      id="cloud-password"
+                      type="password"
+                      placeholder="Enter password"
+                      value={settings.cloud_models_password}
+                      onChange={(e) => setSettings(prev => ({ ...prev, cloud_models_password: e.target.value }))}
+                      className="mt-2"
+                      data-testid="input-cloud-password"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">This password will be required when selecting paid cloud models (OpenRouter)</p>
+                  </div>
+                )}
               </div>
             </div>
           </section>

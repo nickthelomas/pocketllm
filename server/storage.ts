@@ -95,7 +95,9 @@ export class MemStorage implements IStorage {
       { id: randomUUID(), userId: null, key: "summaryFrequency", value: "10", updatedAt: now },
       { id: randomUUID(), userId: null, key: "tokenBudget", value: "4000", updatedAt: now },
       { id: randomUUID(), userId: null, key: "chunkSize", value: "512", updatedAt: now },
-      { id: randomUUID(), userId: null, key: "ragTopK", value: "5", updatedAt: now }
+      { id: randomUUID(), userId: null, key: "ragTopK", value: "5", updatedAt: now },
+      { id: randomUUID(), userId: null, key: "cloud_models_password_enabled", value: "false", updatedAt: now },
+      { id: randomUUID(), userId: null, key: "cloud_models_password", value: "", updatedAt: now }
     ];
 
     defaultSettings.forEach(setting => {
