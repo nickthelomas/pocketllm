@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Download, Loader2, RefreshCw, Wifi, WifiOff } from "lucide-react";
+import { Download, Loader2, RefreshCw, Wifi, WifiOff, Star } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import CloudModelPasswordDialog from "@/components/CloudModelPasswordDialog";
@@ -42,6 +42,10 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
   const [activeTab, setActiveTab] = useState("local");
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [pendingModel, setPendingModel] = useState<string | null>(null);
+  const [favorites, setFavorites] = useState<string[]>(() => {
+    const saved = localStorage.getItem("favoriteModels");
+    return saved ? JSON.parse(saved) : [];
+  });
 
   const { data: models = [], isLoading: modelsLoading } = useQuery<Model[]>({
     queryKey: ["/api/models"],
@@ -73,6 +77,7 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
   );
   const cloudModels = availableModels.filter(m => m.provider === 'openrouter');
   const remoteModels = availableModels.filter(m => m.provider === 'remote-ollama');
+  const favoriteModels = cloudModels.filter(m => favorites.includes(m.name));
 
   const catalogLocalModels = catalogData?.catalog?.filter(m => 
     ['ollama', 'huggingface', 'local-file'].includes(m.provider)
@@ -292,6 +297,15 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
     },
   });
 
+  const toggleFavorite = (modelName: string) => {
+    const newFavorites = favorites.includes(modelName)
+      ? favorites.filter(f => f !== modelName)
+      : [...favorites, modelName];
+    
+    setFavorites(newFavorites);
+    localStorage.setItem("favoriteModels", JSON.stringify(newFavorites));
+  };
+
   const handleModelSelect = async (value: string) => {
     const modelExists = availableModels.some(m => m.name === value);
     if (!modelExists) {
@@ -327,7 +341,7 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
     }
   };
 
-  const getTabContent = (tabModels: Model[], tabName: string) => {
+  const getTabContent = (tabModels: Model[], tabName: string, showFavoriteButton = false) => {
     if (tabModels.length === 0) {
       return (
         <div className="text-center py-8 text-sm text-muted-foreground" data-testid={`text-no-${tabName}-models`}>
@@ -373,14 +387,29 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
                 <p className="text-xs text-muted-foreground mt-0.5 capitalize">{model.provider}</p>
               )}
             </div>
-            <Button
-              size="sm"
-              variant={selectedModel === model.name ? "default" : "outline"}
-              onClick={() => handleModelSelect(model.name)}
-              data-testid={`button-select-${model.name}`}
-            >
-              {selectedModel === model.name ? "Active" : "Select"}
-            </Button>
+            <div className="flex items-center gap-2">
+              {showFavoriteButton && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => toggleFavorite(model.name)}
+                  data-testid={`button-favorite-${model.name}`}
+                  className="p-2"
+                >
+                  <Star 
+                    className={`w-4 h-4 ${favorites.includes(model.name) ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground"}`}
+                  />
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant={selectedModel === model.name ? "default" : "outline"}
+                onClick={() => handleModelSelect(model.name)}
+                data-testid={`button-select-${model.name}`}
+              >
+                {selectedModel === model.name ? "Active" : "Select"}
+              </Button>
+            </div>
           </div>
         ))}
       </div>
@@ -455,7 +484,7 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4" data-testid="tabs-provider">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="local" data-testid="tab-local">
             Local
           </TabsTrigger>
@@ -464,6 +493,12 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
             data-testid="tab-cloud"
           >
             Cloud
+          </TabsTrigger>
+          <TabsTrigger 
+            value="favourites" 
+            data-testid="tab-favourites"
+          >
+            Favourites
           </TabsTrigger>
           <TabsTrigger 
             value="remote" 
@@ -487,7 +522,25 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
               Network offline. Cloud models require internet connectivity.
             </div>
           ) : (
-            getTabContent(cloudModels, "cloud")
+            getTabContent(cloudModels, "cloud", true)
+          )}
+        </TabsContent>
+
+        <TabsContent value="favourites" className="mt-3">
+          {!hasOpenRouterKey ? (
+            <div className="text-center py-8 text-sm text-muted-foreground" data-testid="text-configure-openrouter-favourites">
+              Configure OpenRouter API key in Settings to use cloud models.
+            </div>
+          ) : !isOnline ? (
+            <div className="text-center py-8 text-sm text-muted-foreground" data-testid="text-favourites-offline">
+              Network offline. Cloud models require internet connectivity.
+            </div>
+          ) : favoriteModels.length === 0 ? (
+            <div className="text-center py-8 text-sm text-muted-foreground" data-testid="text-no-favourites">
+              No favourites yet. Star your favorite cloud models from the Cloud tab.
+            </div>
+          ) : (
+            getTabContent(favoriteModels, "favourites", true)
           )}
         </TabsContent>
 
