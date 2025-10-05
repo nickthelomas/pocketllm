@@ -1221,6 +1221,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // MCP Tool Execution
+  app.post("/api/mcp/tools/execute", async (req, res) => {
+    try {
+      const { mcpService } = await import("./services/mcp");
+      const { serverId, toolName, args } = req.body;
+
+      if (!serverId || !toolName) {
+        return res.status(400).json({ error: "serverId and toolName are required" });
+      }
+
+      const result = await mcpService.executeTool({
+        serverId,
+        toolName,
+        args: args || {},
+      });
+
+      if (!result.success) {
+        return res.status(400).json({ error: result.error });
+      }
+
+      res.json(result);
+    } catch (error) {
+      console.error("MCP tool execution error:", error);
+      res.status(500).json({ error: "Failed to execute MCP tool" });
+    }
+  });
+
+  // Test MCP server connection
+  app.post("/api/mcp/servers/:id/test", async (req, res) => {
+    try {
+      const { mcpService } = await import("./services/mcp");
+      const { id } = req.params;
+      const result = await mcpService.testConnection(id);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to test MCP server connection" });
+    }
+  });
+
   // Export/Import
   app.get("/api/export", async (req, res) => {
     try {
