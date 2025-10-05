@@ -1,8 +1,12 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Settings, Play } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Settings, Play, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 import type { McpServer } from "@shared/schema";
 
 interface MCPToolsDialogProps {
@@ -11,22 +15,68 @@ interface MCPToolsDialogProps {
 }
 
 export default function MCPToolsDialog({ open, onOpenChange }: MCPToolsDialogProps) {
+  const { toast } = useToast();
+  const [executionResults, setExecutionResults] = useState<Record<string, any>>({});
   const { data: mcpServers = [], isLoading } = useQuery<McpServer[]>({
     queryKey: ["/api/mcp/servers"],
     enabled: open,
   });
 
-  const executeTool = (serverName: string, toolName: string) => {
-    // In a real implementation, this would show a form to collect tool arguments
-    // and then execute the tool via MCP protocol
-    const args = prompt(`Enter arguments for ${toolName} (JSON format):`);
+  const executeToolMutation = useMutation({
+    mutationFn: async ({ serverId, toolName, args }: { 
+      serverId: string; 
+      toolName: string; 
+      args: Record<string, any> 
+    }) => {
+      return apiRequest("/api/mcp/tools/execute", {
+        method: "POST",
+        body: JSON.stringify({ serverId, toolName, args }),
+      });
+    },
+    onSuccess: (data, variables) => {
+      if (data.success) {
+        toast({
+          title: "Tool Executed Successfully",
+          description: `${variables.toolName} completed successfully`,
+        });
+        setExecutionResults(prev => ({
+          ...prev,
+          [variables.toolName]: data.result,
+        }));
+      } else {
+        toast({
+          title: "Tool Execution Failed",
+          description: data.error || "Unknown error occurred",
+          variant: "destructive",
+        });
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Tool Execution Error",
+        description: error.message || "Failed to execute tool",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const executeTool = (server: McpServer, toolName: string) => {
+    // Show a prompt to collect tool arguments
+    const args = prompt(`Enter arguments for ${toolName} (JSON format):\n\nExample: {"query": "search term"}`);
     if (args) {
       try {
-        const parsedArgs = JSON.parse(args);
-        console.log("Executing tool:", { serverName, toolName, args: parsedArgs });
-        // TODO: Implement actual MCP tool execution
+        const parsedArgs = args.trim() === "" ? {} : JSON.parse(args);
+        executeToolMutation.mutate({ 
+          serverId: server.id, 
+          toolName, 
+          args: parsedArgs 
+        });
       } catch (error) {
-        alert("Invalid JSON format");
+        toast({
+          title: "Invalid JSON",
+          description: "Please provide valid JSON format for arguments",
+          variant: "destructive",
+        });
       }
     }
   };
@@ -96,12 +146,21 @@ export default function MCPToolsDialog({ open, onOpenChange }: MCPToolsDialogPro
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => executeTool(server.name, tool)}
-                              disabled={!server.isActive}
+                              onClick={() => executeTool(server, tool)}
+                              disabled={!server.isActive || executeToolMutation.isPending}
                               data-testid={`button-execute-tool-${tool}`}
                             >
-                              <Play className="w-3 h-3 mr-1" />
-                              Execute
+                              {executeToolMutation.isPending ? (
+                                <>
+                                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                  Executing...
+                                </>
+                              ) : (
+                                <>
+                                  <Play className="w-3 h-3 mr-1" />
+                                  Execute
+                                </>
+                              )}
                             </Button>
                           </div>
                         ))}
@@ -115,6 +174,26 @@ export default function MCPToolsDialog({ open, onOpenChange }: MCPToolsDialogPro
             </div>
           )}
         </div>
+
+        {/* Display execution results */}
+        {Object.keys(executionResults).length > 0 && (
+          <div className="mt-6 space-y-4">
+            <h3 className="text-sm font-semibold">Recent Execution Results:</h3>
+            <div className="max-h-60 overflow-y-auto space-y-3">
+              {Object.entries(executionResults).map(([toolName, result], index) => (
+                <Alert key={index} className="bg-accent/5 border-accent/20">
+                  <CheckCircle className="h-4 w-4 text-accent" />
+                  <AlertDescription>
+                    <div className="font-mono text-sm mb-1">{toolName}</div>
+                    <pre className="text-xs overflow-x-auto bg-background rounded p-2">
+                      {JSON.stringify(result, null, 2)}
+                    </pre>
+                  </AlertDescription>
+                </Alert>
+              ))}
+            </div>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );
