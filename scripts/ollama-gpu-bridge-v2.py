@@ -39,6 +39,7 @@ CORS(app)
 # Configuration
 LLAMA_BIN = Path.home() / "llama.cpp" / "build" / "bin" / "main"
 MODELS_DIR = Path.home() / "PocketLLM" / "models"
+OLLAMA_MODELS_DIR = Path.home() / ".ollama" / "models"
 CONFIG_DIR = Path.home() / ".ollama-bridge"
 
 # Create directories if they don't exist
@@ -70,68 +71,98 @@ DEFAULT_MAX_TOKENS = 512
 # Model registry (maps Ollama model names to GGUF files)
 MODEL_REGISTRY = {}
 
+def register_model_names(model_file: Path, path_str: str):
+    """Register a model with multiple name variations"""
+    global MODEL_REGISTRY
+    
+    filename = model_file.name
+    stem = model_file.stem
+    stem_lower = stem.lower()
+    
+    # Register with multiple name variations
+    MODEL_REGISTRY[filename] = path_str
+    MODEL_REGISTRY[stem] = path_str
+    MODEL_REGISTRY[stem_lower] = path_str
+    
+    # Simplified names
+    simple_name = stem_lower.replace("-", "_").replace(".", "_")
+    MODEL_REGISTRY[simple_name] = path_str
+    
+    # Create Ollama-style names based on model type
+    if "tinyllama" in stem_lower:
+        MODEL_REGISTRY["tinyllama"] = path_str
+        MODEL_REGISTRY["tinyllama:latest"] = path_str
+        MODEL_REGISTRY["tinyllama:1b"] = path_str
+        MODEL_REGISTRY["tinyllama:1.1b"] = path_str
+        
+    if "llama" in stem_lower and "3.2" in stem_lower:
+        MODEL_REGISTRY["llama3.2:1b"] = path_str
+        MODEL_REGISTRY["llama3.2"] = path_str
+        MODEL_REGISTRY["llama3:latest"] = path_str
+        MODEL_REGISTRY["llama3"] = path_str
+        
+    if "llama3" in stem_lower:
+        MODEL_REGISTRY["llama3"] = path_str
+        MODEL_REGISTRY["llama3:latest"] = path_str
+        if "1b" in stem_lower:
+            MODEL_REGISTRY["llama3:1b"] = path_str
+            MODEL_REGISTRY["llama3.2:1b"] = path_str
+            
+    if "phi" in stem_lower:
+        MODEL_REGISTRY["phi3:mini"] = path_str
+        MODEL_REGISTRY["phi3:latest"] = path_str
+        MODEL_REGISTRY["phi3"] = path_str
+        MODEL_REGISTRY["phi"] = path_str
+        
+    if "gemma" in stem_lower:
+        MODEL_REGISTRY["gemma:2b"] = path_str
+        MODEL_REGISTRY["gemma:latest"] = path_str
+        MODEL_REGISTRY["gemma"] = path_str
+        
+    if "qwen" in stem_lower:
+        MODEL_REGISTRY["qwen:1.8b"] = path_str
+        MODEL_REGISTRY["qwen:latest"] = path_str
+        MODEL_REGISTRY["qwen:1.5b"] = path_str
+        MODEL_REGISTRY["qwen2:1.5b"] = path_str
+        MODEL_REGISTRY["qwen"] = path_str
+        
+    if "mistral" in stem_lower:
+        MODEL_REGISTRY["mistral:7b"] = path_str
+        MODEL_REGISTRY["mistral:7b-instruct"] = path_str
+        MODEL_REGISTRY["mistral:7b-instruct-v0.2"] = path_str
+        MODEL_REGISTRY["mistral:latest"] = path_str
+        MODEL_REGISTRY["mistral"] = path_str
+
 def scan_models():
-    """Scan for available GGUF models"""
+    """Scan for available GGUF models in both PocketLLM and Ollama directories"""
     global MODEL_REGISTRY
     MODEL_REGISTRY = {}
     
-    if not MODELS_DIR.exists():
+    directories_to_scan = []
+    
+    # Add PocketLLM models directory
+    if MODELS_DIR.exists():
+        directories_to_scan.append(("PocketLLM", MODELS_DIR))
+    else:
         MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    
+    # Add Ollama models directory (scan recursively for blobs)
+    if OLLAMA_MODELS_DIR.exists():
+        directories_to_scan.append(("Ollama", OLLAMA_MODELS_DIR))
+    
+    if not directories_to_scan:
+        logger.warning("No model directories found")
         return
-        
-    for model_file in MODELS_DIR.glob("*.gguf"):
-        path_str = str(model_file)
-        filename = model_file.name
-        stem = model_file.stem
-        stem_lower = stem.lower()
-        
-        # Register with multiple name variations
-        MODEL_REGISTRY[filename] = path_str
-        MODEL_REGISTRY[stem] = path_str
-        MODEL_REGISTRY[stem_lower] = path_str
-        
-        # Simplified names
-        simple_name = stem_lower.replace("-", "_").replace(".", "_")
-        MODEL_REGISTRY[simple_name] = path_str
-        
-        # Create Ollama-style names based on model type
-        if "tinyllama" in stem_lower:
-            MODEL_REGISTRY["tinyllama"] = path_str
-            MODEL_REGISTRY["tinyllama:latest"] = path_str
-            MODEL_REGISTRY["tinyllama:1b"] = path_str
-            MODEL_REGISTRY["tinyllama:1.1b"] = path_str
-            
-        if "llama" in stem_lower and "3.2" in stem_lower:
-            MODEL_REGISTRY["llama3.2:1b"] = path_str
-            MODEL_REGISTRY["llama3.2"] = path_str
-            MODEL_REGISTRY["llama3:latest"] = path_str
-            MODEL_REGISTRY["llama3"] = path_str
-            
-        if "llama3" in stem_lower:
-            MODEL_REGISTRY["llama3"] = path_str
-            MODEL_REGISTRY["llama3:latest"] = path_str
-            if "1b" in stem_lower:
-                MODEL_REGISTRY["llama3:1b"] = path_str
-                MODEL_REGISTRY["llama3.2:1b"] = path_str
-                
-        if "phi" in stem_lower:
-            MODEL_REGISTRY["phi3:mini"] = path_str
-            MODEL_REGISTRY["phi3:latest"] = path_str
-            MODEL_REGISTRY["phi3"] = path_str
-            MODEL_REGISTRY["phi"] = path_str
-            
-        if "gemma" in stem_lower:
-            MODEL_REGISTRY["gemma:2b"] = path_str
-            MODEL_REGISTRY["gemma:latest"] = path_str
-            MODEL_REGISTRY["gemma"] = path_str
-            
-        if "qwen" in stem_lower:
-            MODEL_REGISTRY["qwen:1.8b"] = path_str
-            MODEL_REGISTRY["qwen:latest"] = path_str
-            MODEL_REGISTRY["qwen:1.5b"] = path_str
-            MODEL_REGISTRY["qwen"] = path_str
+    
+    for source, directory in directories_to_scan:
+        # Scan recursively for .gguf files (Ollama stores in blobs subdirectory)
+        for model_file in directory.rglob("*.gguf"):
+            path_str = str(model_file)
+            register_model_names(model_file, path_str)
+            logger.debug(f"Found model from {source}: {model_file.name}")
         
     logger.info(f"Found {len(set(MODEL_REGISTRY.values()))} unique models with {len(MODEL_REGISTRY)} name mappings")
+    logger.info(f"Scanned directories: {[str(d[1]) for d in directories_to_scan]}")
 
 def get_model_path(model_name: str) -> Optional[str]:
     """Get the actual model path from a model name"""

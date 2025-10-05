@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Send, Paperclip, Square, RotateCcw, Settings } from "lucide-react";
+import { Send, Paperclip, Square, RotateCcw, Settings, Mic, MicOff, Volume2 } from "lucide-react";
 import MessageBubble from "@/components/MessageBubble";
 import MCPToolsDialog from "@/components/MCPToolsDialog";
 import TagsEditor from "@/components/TagsEditor";
@@ -23,6 +23,9 @@ export default function ChatArea({ conversationId, selectedModel, onConversation
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingMessage, setStreamingMessage] = useState("");
   const [showMCPTools, setShowMCPTools] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
+  const recognitionRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -172,6 +175,158 @@ export default function ChatArea({ conversationId, selectedModel, onConversation
     // In a real implementation, we'd abort the fetch request
   };
 
+  // Voice input using Web Speech API
+  const toggleVoiceInput = () => {
+    if (isListening) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+        recognitionRef.current = null;
+      }
+      setIsListening(false);
+      return;
+    }
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    
+    if (!SpeechRecognition) {
+      toast({
+        title: "Voice input not supported",
+        description: "Your browser doesn't support voice recognition",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (recognitionRef.current) {
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
+
+    recognition.onstart = () => {
+      setIsListening(true);
+    };
+
+    recognition.onresult = (event: any) => {
+      const finalTranscript = Array.from(event.results)
+        .filter((result: any) => result.isFinal)
+        .map((result: any) => result[0].transcript)
+        .join('');
+      
+      if (finalTranscript) {
+        setMessage(prev => prev ? `${prev} ${finalTranscript}` : finalTranscript);
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error('Speech recognition error:', event.error);
+      setIsListening(false);
+      recognitionRef.current = null;
+      
+      if (event.error === 'not-allowed') {
+        toast({
+          title: "Microphone permission denied",
+          description: "Please allow microphone access in your browser settings",
+          variant: "destructive",
+        });
+      } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
+        toast({
+          title: "Voice input error",
+          description: 'Error: ' + event.error,
+          variant: "destructive",
+        });
+      }
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+      recognitionRef.current = null;
+    };
+
+    recognitionRef.current = recognition;
+    try {
+      recognition.start();
+    } catch (error) {
+      setIsListening(false);
+      recognitionRef.current = null;
+      toast({
+        title: "Voice input failed",
+        description: "Could not start voice recognition",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Voice output using Web Speech Synthesis API
+  const speakMessage = (text: string, messageId: string) => {
+    if (!window.speechSynthesis) {
+      toast({
+        title: "Text-to-speech not supported",
+        description: "Your browser doesn't support text-to-speech",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (speakingMessageId === messageId && window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+      setSpeakingMessageId(null);
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'en-US';
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+
+    utterance.onstart = () => {
+      setSpeakingMessageId(messageId);
+    };
+
+    utterance.onend = () => {
+      setSpeakingMessageId(null);
+    };
+
+    utterance.onerror = (event) => {
+      setSpeakingMessageId(null);
+      if (event.error !== 'interrupted' && event.error !== 'canceled') {
+        toast({
+          title: "Speech error",
+          description: "Failed to speak the message",
+          variant: "destructive",
+        });
+      }
+    };
+
+    try {
+      window.speechSynthesis.speak(utterance);
+    } catch (error) {
+      setSpeakingMessageId(null);
+      toast({
+        title: "Speech error",
+        description: "Failed to start speech synthesis",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Cleanup recognition on unmount
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
   if (!conversationId) {
     return (
       <div className="flex-1 flex items-center justify-center bg-background">
@@ -190,6 +345,16 @@ export default function ChatArea({ conversationId, selectedModel, onConversation
                 data-testid="input-new-message"
               />
               <div className="absolute right-3 bottom-3 flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={toggleVoiceInput}
+                  disabled={isStreaming}
+                  data-testid="button-voice-input"
+                  className={isListening ? 'text-red-500' : ''}
+                >
+                  {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                </Button>
                 <Button
                   size="sm"
                   onClick={sendMessage}
@@ -259,7 +424,12 @@ export default function ChatArea({ conversationId, selectedModel, onConversation
           ) : (
             <>
               {messages.map((msg) => (
-                <MessageBubble key={msg.id} message={msg} />
+                <MessageBubble 
+                  key={msg.id} 
+                  message={msg} 
+                  onSpeak={speakMessage}
+                  speakingMessageId={speakingMessageId}
+                />
               ))}
               
               {/* Streaming message */}
@@ -275,6 +445,8 @@ export default function ChatArea({ conversationId, selectedModel, onConversation
                     createdAt: new Date(),
                   }}
                   isStreaming={true}
+                  onSpeak={speakMessage}
+                  speakingMessageId={speakingMessageId}
                 />
               )}
             </>
@@ -324,6 +496,16 @@ export default function ChatArea({ conversationId, selectedModel, onConversation
             <div className="absolute right-3 bottom-3 flex items-center gap-2">
               <Button variant="ghost" size="sm" data-testid="button-attach-file">
                 <Paperclip className="w-5 h-5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={toggleVoiceInput}
+                disabled={isStreaming}
+                data-testid="button-voice-input-main"
+                className={isListening ? 'text-red-500' : ''}
+              >
+                {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
               </Button>
               <Button
                 size="sm"

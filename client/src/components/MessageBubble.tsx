@@ -1,13 +1,16 @@
-import { Bot, User } from "lucide-react";
+import { Bot, User, Volume2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import type { Message } from "@shared/schema";
 
 interface MessageBubbleProps {
   message: Message;
   isStreaming?: boolean;
+  onSpeak?: (text: string, messageId: string) => void;
+  speakingMessageId?: string | null;
 }
 
-export default function MessageBubble({ message, isStreaming = false }: MessageBubbleProps) {
+export default function MessageBubble({ message, isStreaming = false, onSpeak, speakingMessageId = null }: MessageBubbleProps) {
   const formatTime = (date: Date) => {
     return new Date(date).toLocaleTimeString("en-US", {
       hour: "numeric",
@@ -77,6 +80,17 @@ export default function MessageBubble({ message, isStreaming = false }: MessageB
               )}
             </div>
             <div className="flex items-center gap-2 mt-1.5">
+              {onSpeak && message.role === "assistant" && !isStreaming && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onSpeak(message.content, message.id)}
+                  className={speakingMessageId === message.id ? 'text-blue-500' : ''}
+                  data-testid="button-speak-message"
+                >
+                  <Volume2 className="w-3 h-3" />
+                </Button>
+              )}
               <span className="text-xs text-muted-foreground">
                 {formatTime(message.createdAt)}
               </span>

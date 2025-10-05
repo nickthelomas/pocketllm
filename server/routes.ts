@@ -521,11 +521,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const syncedModels: any[] = [];
       
+      // First, mark all existing Ollama models as unavailable (we'll re-enable the ones that sync)
+      const existingModels = await storage.getModels();
+      const ollamaModelIds = existingModels
+        .filter(m => m.provider === 'ollama')
+        .map(m => m.id);
+      
+      for (const modelId of ollamaModelIds) {
+        await storage.updateModel(modelId, { isAvailable: false });
+      }
+      
       // Sync models from Ollama with configured base URL
       const ollama = await getOllamaService();
       const ollamaAvailable = await ollama.isAvailable();
       if (ollamaAvailable) {
         const ollamaModels = await ollama.listModels();
+        console.log(`📋 Found ${ollamaModels.length} models from Ollama/GPU bridge`);
+        
         for (const ollamaModel of ollamaModels) {
           const existing = await storage.getModel(ollamaModel.name);
           if (!existing) {
@@ -535,6 +547,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
               isAvailable: true,
               parameters: { size: ollamaModel.size, details: ollamaModel.details },
             });
+            console.log(`✅ Added new model: ${ollamaModel.name}`);
+          } else {
+            // Re-enable the model since it was found
+            await storage.updateModel(existing.id, { 
+              isAvailable: true,
+              parameters: { size: ollamaModel.size, details: ollamaModel.details },
+            });
+            console.log(`✅ Re-enabled model: ${ollamaModel.name}`);
           }
           syncedModels.push({
             name: ollamaModel.name,
