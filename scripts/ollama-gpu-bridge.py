@@ -167,33 +167,68 @@ def scan_models():
         return
         
     for model_file in MODELS_DIR.glob("*.gguf"):
-        # Create a simple name mapping
-        name = model_file.stem.lower().replace("-", "_").replace(".", "_")
+        path_str = str(model_file)
+        filename = model_file.name
+        stem = model_file.stem
+        stem_lower = stem.lower()
         
-        # Also create common Ollama-style names
-        if "llama" in name:
-            MODEL_REGISTRY["llama3.2:1b"] = str(model_file)
-            MODEL_REGISTRY["llama3:latest"] = str(model_file)
-        elif "phi" in name:
-            MODEL_REGISTRY["phi3:mini"] = str(model_file)
-            MODEL_REGISTRY["phi3:latest"] = str(model_file)
-        elif "tinyllama" in name:
-            MODEL_REGISTRY["tinyllama:latest"] = str(model_file)
-            MODEL_REGISTRY["tinyllama:1b"] = str(model_file)
-        elif "gemma" in name:
-            MODEL_REGISTRY["gemma:2b"] = str(model_file)
-            MODEL_REGISTRY["gemma:latest"] = str(model_file)
-        elif "qwen" in name:
-            MODEL_REGISTRY["qwen:1.8b"] = str(model_file)
-            MODEL_REGISTRY["qwen:latest"] = str(model_file)
+        # Register with multiple name variations
+        # 1. Full filename
+        MODEL_REGISTRY[filename] = path_str
+        
+        # 2. Stem (without .gguf)
+        MODEL_REGISTRY[stem] = path_str
+        MODEL_REGISTRY[stem_lower] = path_str
+        
+        # 3. Simplified names (replace dashes and dots)
+        simple_name = stem_lower.replace("-", "_").replace(".", "_")
+        MODEL_REGISTRY[simple_name] = path_str
+        
+        # 4. Create Ollama-style names based on model type
+        # Check the original filename, not the modified name
+        if "tinyllama" in stem_lower:
+            MODEL_REGISTRY["tinyllama"] = path_str
+            MODEL_REGISTRY["tinyllama:latest"] = path_str
+            MODEL_REGISTRY["tinyllama:1b"] = path_str
+            MODEL_REGISTRY["tinyllama:1.1b"] = path_str
             
-        # Always register with the actual filename too
-        MODEL_REGISTRY[name] = str(model_file)
-        MODEL_REGISTRY[model_file.name] = str(model_file)
+        if "llama" in stem_lower and "3.2" in stem_lower:
+            MODEL_REGISTRY["llama3.2:1b"] = path_str
+            MODEL_REGISTRY["llama3.2"] = path_str
+            MODEL_REGISTRY["llama3:latest"] = path_str
+            MODEL_REGISTRY["llama3"] = path_str
+            
+        if "llama3" in stem_lower:
+            MODEL_REGISTRY["llama3"] = path_str
+            MODEL_REGISTRY["llama3:latest"] = path_str
+            if "1b" in stem_lower:
+                MODEL_REGISTRY["llama3:1b"] = path_str
+                MODEL_REGISTRY["llama3.2:1b"] = path_str
+            elif "3b" in stem_lower:
+                MODEL_REGISTRY["llama3:3b"] = path_str
+            elif "7b" in stem_lower or "8b" in stem_lower:
+                MODEL_REGISTRY["llama3:8b"] = path_str
+                
+        if "phi" in stem_lower:
+            MODEL_REGISTRY["phi3:mini"] = path_str
+            MODEL_REGISTRY["phi3:latest"] = path_str
+            MODEL_REGISTRY["phi3"] = path_str
+            MODEL_REGISTRY["phi"] = path_str
+            
+        if "gemma" in stem_lower:
+            MODEL_REGISTRY["gemma:2b"] = path_str
+            MODEL_REGISTRY["gemma:latest"] = path_str
+            MODEL_REGISTRY["gemma"] = path_str
+            
+        if "qwen" in stem_lower:
+            MODEL_REGISTRY["qwen:1.8b"] = path_str
+            MODEL_REGISTRY["qwen:latest"] = path_str
+            MODEL_REGISTRY["qwen:1.5b"] = path_str
+            MODEL_REGISTRY["qwen"] = path_str
         
-    logger.info(f"Found {len(MODEL_REGISTRY)} model mappings")
-    for name in MODEL_REGISTRY:
-        logger.debug(f"  {name} -> {Path(MODEL_REGISTRY[name]).name}")
+    logger.info(f"Found {len(set(MODEL_REGISTRY.values()))} unique models with {len(MODEL_REGISTRY)} name mappings")
+    for name, path in MODEL_REGISTRY.items():
+        logger.debug(f"  {name} -> {Path(path).name}")
 
 def get_model_path(model_name: str) -> Optional[str]:
     """Get the actual model path from a model name"""
