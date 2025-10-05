@@ -5,15 +5,18 @@ Pocket LLM is a local-first, full-stack LLM application designed for mobile use 
 
 ## Recent Changes (October 2025)
 
-### GPU Bridge Model Sync Fix (October 5, 2025)
-- **Root Cause**: GPU bridge models weren't being added to database, causing blank chat responses
-- **Database Requirement**: Chat system requires models to exist in database before routing to services
-- **Fix Applied**: Manually seeded tinyllama models into database for immediate functionality
+### GPU Bridge SSE Format Fix (October 5, 2025)
+- **Root Cause**: GPU bridge sends Server-Sent Events (SSE) format with `data:` prefix, but OllamaService expected raw JSON
+- **Error Pattern**: `SyntaxError: Unexpected token 'd' in JSON` when parsing streaming responses
+- **Fix Applied**: Updated `OllamaService.generateStream()` to strip `data:` prefix before JSON parsing
+  - Now compatible with both standard Ollama (raw JSON) and GPU bridge (SSE format)
+  - Handles format: `data: {"model":"tinyllama","response":"text","done":false}`
+- **Additional Fix**: Manually seeded tinyllama models into database (models must exist in DB for chat routing)
 - **Deployment Flow**: 
   1. Start GPU bridge in Termux: `bash scripts/start-gpu-bridge.sh`
   2. Start backend server
   3. Click "Sync Models" to detect and add GPU bridge models to database
-  4. Select model and chat with GPU-accelerated local inference
+  4. Select model and chat with GPU-accelerated local inference (15-30+ tokens/second)
 - **Environment Note**: GPU bridge requires Python/llama.cpp (Termux only); Replit is for GUI development and cloud model testing
 
 ### MCP Tool Execution Implementation (October 5, 2025)

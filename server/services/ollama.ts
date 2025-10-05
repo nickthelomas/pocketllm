@@ -229,8 +229,14 @@ export class OllamaService {
 
         for (const line of lines) {
           if (!line.trim()) continue;
+          
+          if (line.startsWith('event:') || line.startsWith('id:') || line.startsWith(':')) {
+            continue;
+          }
+          
           try {
-            const chunk: OllamaGenerateChunk = JSON.parse(line);
+            const jsonLine = line.replace(/^data:\s*/, '').trim();
+            const chunk: OllamaGenerateChunk = JSON.parse(jsonLine);
             yield chunk;
             if (chunk.done) return;
           } catch (e) {
