@@ -54,7 +54,57 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     gpu_batch_size: 512,
   });
 
+  const [showDisablePasswordDialog, setShowDisablePasswordDialog] = useState(false);
+  const [verifyPassword, setVerifyPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [isVerifying, setIsVerifying] = useState(false);
+
   const { toast } = useToast();
+
+  const handlePasswordToggle = async (checked: boolean) => {
+    // If enabling, just enable it
+    if (checked) {
+      setSettings(prev => ({ ...prev, cloud_models_password_enabled: checked }));
+      return;
+    }
+
+    // If disabling, require password verification
+    setShowDisablePasswordDialog(true);
+  };
+
+  const handleDisablePasswordProtection = async () => {
+    setIsVerifying(true);
+    setPasswordError("");
+
+    try {
+      const response = await fetch("/api/auth/verify-cloud-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: verifyPassword }),
+      });
+
+      const data = await response.json();
+
+      if (data.verified) {
+        setSettings(prev => ({ ...prev, cloud_models_password_enabled: false }));
+        setShowDisablePasswordDialog(false);
+        setVerifyPassword("");
+        setPasswordError("");
+        toast({
+          title: "Password Protection Disabled",
+          description: "Kid-safe mode has been turned off.",
+        });
+      } else {
+        setPasswordError("Incorrect password");
+        setVerifyPassword("");
+      }
+    } catch (error) {
+      setPasswordError("Failed to verify password");
+      setVerifyPassword("");
+    } finally {
+      setIsVerifying(false);
+    }
+  };
 
   const { data: storedSettings } = useQuery<SettingsType[]>({
     queryKey: ["/api/settings"],
@@ -437,7 +487,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <Switch
                     id="cloud-password-enabled"
                     checked={settings.cloud_models_password_enabled === true || settings.cloud_models_password_enabled === "true"}
-                    onCheckedChange={(checked) => setSettings(prev => ({ ...prev, cloud_models_password_enabled: checked }))}
+                    onCheckedChange={handlePasswordToggle}
                     data-testid="switch-cloud-password"
                   />
                 </div>
@@ -780,6 +830,74 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           </Button>
         </div>
       </DialogContent>
+
+      {/* Password Verification Dialog for Disabling */}
+      <Dialog open={showDisablePasswordDialog} onOpenChange={(open) => {
+        if (!open) {
+          // User cancelled - don't change the setting
+          setShowDisablePasswordDialog(false);
+          setVerifyPassword("");
+          setPasswordError("");
+        }
+      }}>
+        <DialogContent className="sm:max-w-md" data-testid="dialog-disable-password">
+          <DialogHeader>
+            <div className="flex items-center gap-2">
+              <Shield className="w-6 h-6 text-primary" />
+              <DialogTitle>Verify Password</DialogTitle>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <p className="text-sm text-muted-foreground">
+              Enter your password to disable kid-safe mode.
+            </p>
+
+            <div className="space-y-2">
+              <Label htmlFor="verify-password">Password</Label>
+              <Input
+                id="verify-password"
+                type="password"
+                value={verifyPassword}
+                onChange={(e) => {
+                  setVerifyPassword(e.target.value);
+                  setPasswordError("");
+                }}
+                onKeyDown={(e) => e.key === "Enter" && handleDisablePasswordProtection()}
+                placeholder="Enter password"
+                autoFocus
+                data-testid="input-verify-password"
+              />
+              {passwordError && (
+                <p className="text-sm text-destructive" data-testid="text-password-error">
+                  {passwordError}
+                </p>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowDisablePasswordDialog(false);
+                  setVerifyPassword("");
+                  setPasswordError("");
+                }}
+                data-testid="button-cancel-disable"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleDisablePasswordProtection}
+                disabled={isVerifying || !verifyPassword}
+                data-testid="button-confirm-disable"
+              >
+                {isVerifying ? "Verifying..." : "Disable Protection"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }
