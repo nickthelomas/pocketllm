@@ -85,6 +85,18 @@ if pgrep -f "ollama serve" > /dev/null; then
 else
     log "Starting Ollama server..."
     cd "$SCRIPT_DIR"
+    
+    # Check for GPU configuration and use it if available
+    if [ -f "$HOME/.ollama/environment" ]; then
+        log "Found GPU configuration, loading..."
+        source "$HOME/.ollama/environment"
+        export $(grep -v '^#' $HOME/.ollama/environment | xargs)
+        echo "GPU acceleration enabled with following settings:" >> "$OLLAMA_LOG"
+        grep -v '^#' $HOME/.ollama/environment >> "$OLLAMA_LOG"
+    else
+        log "No GPU configuration found, using CPU mode"
+    fi
+    
     ollama serve > "$OLLAMA_LOG" 2>&1 &
     OLLAMA_PID=$!
     echo "$OLLAMA_PID" >> "$PID_FILE"
