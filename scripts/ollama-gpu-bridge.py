@@ -232,7 +232,7 @@ def scan_models():
 
 def get_model_path(model_name: str) -> Optional[str]:
     """Get the actual model path from a model name"""
-    # Refresh registry
+    # Refresh registry if empty
     if not MODEL_REGISTRY:
         scan_models()
         
@@ -245,6 +245,21 @@ def get_model_path(model_name: str) -> Optional[str]:
     if model_lower in MODEL_REGISTRY:
         return MODEL_REGISTRY[model_lower]
         
+    # Try with various transformations
+    # Replace spaces with dashes or underscores
+    variations = [
+        model_name.replace(" ", "-"),
+        model_name.replace(" ", "_"),
+        model_name.replace("-", "_"),
+        model_name.replace("_", "-"),
+    ]
+    
+    for variant in variations:
+        if variant in MODEL_REGISTRY:
+            return MODEL_REGISTRY[variant]
+        if variant.lower() in MODEL_REGISTRY:
+            return MODEL_REGISTRY[variant.lower()]
+    
     # Try without tag
     if ":" in model_name:
         base_name = model_name.split(":")[0]
@@ -253,11 +268,26 @@ def get_model_path(model_name: str) -> Optional[str]:
         if f"{base_name}:latest" in MODEL_REGISTRY:
             return MODEL_REGISTRY[f"{base_name}:latest"]
             
+    # Try partial matches for common patterns
+    # This helps when UI sends variations of model names
+    for key, path in MODEL_REGISTRY.items():
+        # Check if the model_name is a substring of a registered key
+        if model_name.lower() in key.lower() or key.lower() in model_name.lower():
+            logger.info(f"Partial match: {model_name} -> {key} -> {path}")
+            return path
+            
     # If still not found, check if it's a direct file path
     model_path = MODELS_DIR / model_name
     if model_path.exists() and model_path.suffix == ".gguf":
         return str(model_path)
+    
+    # Also check with .gguf extension added
+    model_path_with_ext = MODELS_DIR / f"{model_name}.gguf"
+    if model_path_with_ext.exists():
+        return str(model_path_with_ext)
         
+    logger.warning(f"Model not found: {model_name}")
+    logger.debug(f"Available models: {list(MODEL_REGISTRY.keys())}")
     return None
 
 def get_or_create_session(model_name: str) -> Optional[LlamaCppSession]:
@@ -282,31 +312,63 @@ def list_models():
     scan_models()
     
     models = []
-    seen_paths = set()
+    seen_files = {}  # Map file paths to their preferred names
     
+    # First pass: collect all unique files and determine their best names
     for name, path in MODEL_REGISTRY.items():
-        if path not in seen_paths:
-            seen_paths.add(path)
+        if path not in seen_files:
+            # Prefer Ollama-style names (with :tag) over plain names
+            if ":" in name:
+                seen_files[path] = name
+            elif path not in seen_files:
+                seen_files[path] = name
+    
+    # Second pass: create model entries for each unique file
+    for path, preferred_name in seen_files.items():
+        model_file = Path(path)
+        if model_file.exists():
+            size = model_file.stat().st_size
+            modified = model_file.stat().st_mtime
             
-            # Get file info
-            model_file = Path(path)
-            if model_file.exists():
-                size = model_file.stat().st_size
-                modified = model_file.stat().st_mtime
-                
-                models.append({
-                    "name": name,
-                    "model": name,
-                    "modified_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(modified)),
-                    "size": size,
-                    "digest": hashlib.sha256(name.encode()).hexdigest()[:12],
-                    "details": {
-                        "format": "gguf",
-                        "family": "llama" if "llama" in name else "other",
-                        "parameter_size": "1B" if "1b" in name.lower() else "2B",
-                        "quantization_level": "Q4_K_M"
-                    }
-                })
+            # Determine model family and size from filename
+            filename_lower = model_file.name.lower()
+            family = "llama"  # default
+            param_size = "1B"  # default
+            
+            if "tinyllama" in filename_lower:
+                family = "tinyllama"
+                param_size = "1.1B"
+            elif "llama" in filename_lower:
+                family = "llama"
+                if "1b" in filename_lower:
+                    param_size = "1B"
+                elif "3b" in filename_lower:
+                    param_size = "3B"
+                elif "7b" in filename_lower or "8b" in filename_lower:
+                    param_size = "8B"
+            elif "phi" in filename_lower:
+                family = "phi"
+                param_size = "3.8B"
+            elif "gemma" in filename_lower:
+                family = "gemma"
+                param_size = "2B"
+            elif "qwen" in filename_lower:
+                family = "qwen"
+                param_size = "1.8B"
+            
+            models.append({
+                "name": preferred_name,
+                "model": preferred_name,
+                "modified_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(modified)),
+                "size": size,
+                "digest": hashlib.sha256(preferred_name.encode()).hexdigest()[:12],
+                "details": {
+                    "format": "gguf",
+                    "family": family,
+                    "parameter_size": param_size,
+                    "quantization_level": "Q4_K_M"
+                }
+            })
     
     # Add fake embedding model entries so the backend thinks they're available
     # This prevents the backend from trying to pull them at startup
