@@ -272,6 +272,22 @@ def list_models():
                         "quantization_level": "Q4_K_M"
                     }
                 })
+    
+    # Add fake embedding model entries so the backend thinks they're available
+    # This prevents the backend from trying to pull them at startup
+    models.append({
+        "name": "nomic-embed-text:latest",
+        "model": "nomic-embed-text:latest",
+        "modified_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "size": 274302450,  # Fake size
+        "digest": "0a109f422b47",
+        "details": {
+            "format": "gguf",
+            "family": "nomic",
+            "parameter_size": "137M",
+            "quantization_level": "F16"
+        }
+    })
                 
     return jsonify({"models": models})
 
@@ -456,6 +472,16 @@ def pull_model():
     """Pull model endpoint (returns success for existing models)"""
     data = request.get_json()
     model_name = data.get('name', '')
+    
+    # For embedding models, just return success
+    # These models are not supported by llama.cpp but we pretend they exist
+    # to prevent the backend from crashing
+    if 'embed' in model_name.lower() or 'minilm' in model_name.lower():
+        return jsonify({
+            "status": "success",
+            "digest": hashlib.sha256(model_name.encode()).hexdigest()[:12],
+            "note": "Embedding model simulated for compatibility"
+        })
     
     model_path = get_model_path(model_name)
     if model_path:
