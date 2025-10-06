@@ -6,6 +6,7 @@ import multer from "multer";
 import { z } from "zod";
 import { ollamaService } from "./services/ollama";
 import { modelDirectoryScanner } from "./services/modelDirectory";
+import { downloadManager } from "./services/downloadManager";
 import { createMemoryManager } from "./services/memoryManager";
 import { contextBuilder } from "./services/contextBuilder";
 import { promises as fs } from "fs";
@@ -673,6 +674,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: "Failed to fetch models" });
     }
   });
+  
+  // Get download status
+  app.get("/api/models/downloads", async (req, res) => {
+    try {
+      const downloads = downloadManager.getDownloads();
+      const stats = downloadManager.getStats();
+      res.json({ downloads, stats });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch download status" });
+    }
+  });
 
   app.get("/api/models/sync", async (req, res) => {
     try {
@@ -1046,38 +1058,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // File doesn't exist, proceed with download
           }
           
-          // Download GGUF file with progress tracking
-          const response = await fetch(downloadUrl);
-          if (!response.ok) {
-            throw new Error(`Failed to download: ${response.statusText}`);
-          }
-
-          const totalSize = parseInt(response.headers.get('content-length') || '0');
-          let downloadedSize = 0;
+          // Add download to manager
+          const downloadId = await downloadManager.addDownload({
+            name,
+            source: 'huggingface',
+            downloadUrl,
+            targetPath
+          });
           
-          const fileHandle = await fs.open(targetPath, 'w');
-          const reader = response.body?.getReader();
+          // Download GGUF file with progress tracking via manager
+          res.write(`data: ${JSON.stringify({ progress: 0, status: 'downloading GGUF', downloadId })}\n\n`);
           
-          if (!reader) throw new Error('No response body');
-          
-          res.write(`data: ${JSON.stringify({ progress: 0, status: 'downloading GGUF' })}\n\n`);
-          
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
+          try {
+            await downloadManager.downloadFile(
+              downloadUrl,
+              targetPath,
+              (progress, downloaded, total) => {
+                downloadManager.updateProgress(downloadId, progress, 
+                  `downloading ${(downloaded / 1024 / 1024).toFixed(1)}MB / ${(total / 1024 / 1024).toFixed(1)}MB`,
+                  { downloadedSize: downloaded, totalSize: total }
+                );
+                
+                res.write(`data: ${JSON.stringify({ 
+                  progress: Math.round(progress), 
+                  status: `downloading ${(downloaded / 1024 / 1024).toFixed(1)}MB / ${(total / 1024 / 1024).toFixed(1)}MB`,
+                  downloadId
+                })}\n\n`);
+              }
+            );
             
-            await fileHandle.write(value);
-            downloadedSize += value.length;
-            const progress = totalSize > 0 ? (downloadedSize / totalSize) * 100 : 0;
-            
-            res.write(`data: ${JSON.stringify({ 
-              progress: Math.round(progress), 
-              status: `downloading ${(downloadedSize / 1024 / 1024).toFixed(1)}MB / ${(totalSize / 1024 / 1024).toFixed(1)}MB` 
-            })}\n\n`);
+            downloadManager.completeDownload(downloadId, targetPath);
+          } catch (error) {
+            downloadManager.failDownload(downloadId, error instanceof Error ? error.message : String(error));
+            throw error;
           }
-          
-          await fileHandle.close();
-          console.log(`✅ Download complete: ${targetPath}`);
           
           // Add to database as local-file (GPU bridge compatible)
           const modelName = safeFilename.replace('.gguf', '');
