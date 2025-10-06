@@ -6,24 +6,58 @@ export interface EmbeddingResponse {
   embedding: number[];
 }
 
+export interface GPUOptions {
+  num_gpu?: number;
+  num_thread?: number;
+  num_ctx?: number;
+  num_batch?: number;
+  main_gpu?: number;
+  low_vram?: boolean;
+}
+
 export class EmbeddingService {
   private modelName: string;
+  private gpuOptions?: GPUOptions;
 
-  constructor(modelName: string = "nomic-embed-text") {
+  constructor(modelName: string = "nomic-embed-text", gpuOptions?: GPUOptions) {
     this.modelName = modelName;
+    this.gpuOptions = gpuOptions;
+  }
+
+  setGPUOptions(options: GPUOptions) {
+    this.gpuOptions = options;
   }
 
   async generateEmbedding(text: string): Promise<number[]> {
     try {
+      const requestBody: any = {
+        model: this.modelName,
+        prompt: text,
+      };
+
+      // Add GPU options if available
+      if (this.gpuOptions) {
+        const options: any = {};
+        
+        if (this.gpuOptions.num_gpu !== undefined) options.num_gpu = this.gpuOptions.num_gpu;
+        if (this.gpuOptions.num_thread !== undefined) options.num_thread = this.gpuOptions.num_thread;
+        if (this.gpuOptions.num_ctx !== undefined) options.num_ctx = this.gpuOptions.num_ctx;
+        if (this.gpuOptions.num_batch !== undefined) options.num_batch = this.gpuOptions.num_batch;
+        if (this.gpuOptions.main_gpu !== undefined) options.main_gpu = this.gpuOptions.main_gpu;
+        if (this.gpuOptions.low_vram !== undefined) options.low_vram = this.gpuOptions.low_vram;
+        
+        if (Object.keys(options).length > 0) {
+          requestBody.options = options;
+          console.log(`🎮 Using GPU options for embeddings:`, options);
+        }
+      }
+
       const response = await fetch(`${OLLAMA_BASE_URL}/api/embeddings`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          model: this.modelName,
-          prompt: text,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {

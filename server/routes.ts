@@ -10,6 +10,7 @@ import { createMemoryManager } from "./services/memoryManager";
 import { contextBuilder } from "./services/contextBuilder";
 import { promises as fs } from "fs";
 import path from "path";
+import type { GPUOptions } from "./services/embeddings";
 
 // Helper to get Ollama service with configured base URL
 async function getOllamaService() {
@@ -17,6 +18,64 @@ async function getOllamaService() {
   const baseUrl = baseApiUrlSetting?.value ? String(baseApiUrlSetting.value) : "http://127.0.0.1:11434";
   ollamaService.setBaseUrl(baseUrl);
   return ollamaService;
+}
+
+// Helper to fetch GPU settings for embeddings
+async function getGPUOptions(): Promise<GPUOptions | undefined> {
+  try {
+    const gpuEnabled = await storage.getSetting(undefined, "gpu_enabled");
+    
+    if (!gpuEnabled?.value || gpuEnabled.value === false) {
+      return undefined;
+    }
+
+    const gpuLayers = await storage.getSetting(undefined, "gpu_layers");
+    const gpuThreads = await storage.getSetting(undefined, "gpu_threads");
+    const gpuMainGpu = await storage.getSetting(undefined, "gpu_main_gpu");
+    const gpuLowVram = await storage.getSetting(undefined, "gpu_low_vram");
+    const gpuBatchSize = await storage.getSetting(undefined, "gpu_batch_size");
+
+    const options: GPUOptions = {};
+    
+    // num_gpu: Enable GPU usage (1 = use GPU, 0 = CPU only)
+    if (gpuEnabled.value === true || gpuEnabled.value === "true") {
+      options.num_gpu = 1;
+    }
+    
+    // num_thread: CPU threads for processing
+    if (gpuThreads?.value !== undefined) {
+      const threads = parseInt(String(gpuThreads.value));
+      if (!isNaN(threads) && threads > 0) {
+        options.num_thread = threads;
+      }
+    }
+    
+    // main_gpu: Which GPU device to use
+    if (gpuMainGpu?.value !== undefined) {
+      const mainGpu = parseInt(String(gpuMainGpu.value));
+      if (!isNaN(mainGpu) && mainGpu >= 0) {
+        options.main_gpu = mainGpu;
+      }
+    }
+    
+    // low_vram: Enable low VRAM mode for devices with limited memory
+    if (gpuLowVram?.value !== undefined) {
+      options.low_vram = gpuLowVram.value === true || gpuLowVram.value === "true";
+    }
+    
+    // num_batch: Batch size for prompt processing
+    if (gpuBatchSize?.value !== undefined) {
+      const batchSize = parseInt(String(gpuBatchSize.value));
+      if (!isNaN(batchSize) && batchSize > 0) {
+        options.num_batch = batchSize;
+      }
+    }
+
+    return Object.keys(options).length > 0 ? options : undefined;
+  } catch (error) {
+    console.warn("Failed to fetch GPU settings for embeddings:", error);
+    return undefined;
+  }
 }
 
 // Map Ollama model names to HuggingFace GGUF downloads for GPU bridge
@@ -405,7 +464,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         if (ragEnabled?.value !== false) {
           try {
-            const { embeddingService } = await import("./services/embeddings");
+            const { EmbeddingService } = await import("./services/embeddings");
+            const gpuOptions = await getGPUOptions();
+            const embeddingService = new EmbeddingService("nomic-embed-text", gpuOptions);
             const queryEmbedding = await embeddingService.generateEmbedding(message);
             const topK = ragTopK?.value ? parseInt(String(ragTopK.value)) : 5;
             const threshold = ragThreshold?.value ? parseFloat(String(ragThreshold.value)) : 0.3;
@@ -1433,7 +1494,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Create chunks with embeddings
-      const { embeddingService } = await import("./services/embeddings");
+      const { EmbeddingService } = await import("./services/embeddings");
+      const gpuOptions = await getGPUOptions();
+      const embeddingService = new EmbeddingService("nomic-embed-text", gpuOptions);
       const embeddings = await embeddingService.generateBatchEmbeddings(chunks);
       
       for (let i = 0; i < chunks.length; i++) {

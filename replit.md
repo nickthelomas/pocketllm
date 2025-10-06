@@ -26,11 +26,11 @@ Pocket LLM is a local-first, full-stack LLM application designed for mobile use 
 ### Key Features and Specifications
 - **Model Management**: Syncs models from Ollama, local directories, HuggingFace (GGUF), and OpenRouter. Supports streaming downloads and multi-tab UI for browsing.
 - **Multi-Provider Chat Streaming**: Routes chat requests to appropriate LLM services, offering real-time streaming via Server-Sent Events (SSE) and adjustable LLM parameters.
-- **RAG Document Processing**: Supports PDF, DOCX, TXT, CSV, JSON formats, uses Ollama for local embeddings, and vector storage in PostgreSQL with `pgvector` for similarity search, providing inline citations.
+- **RAG Document Processing**: Supports PDF, DOCX, TXT, CSV, JSON formats, uses Ollama for local embeddings with GPU acceleration, and vector storage in PostgreSQL with `pgvector` for similarity search, providing inline citations. GPU settings (num_gpu, num_thread, num_batch, main_gpu, low_vram) are automatically applied to embedding generation when GPU is enabled.
 - **Hierarchical Conversation Memory**: Maintains unlimited conversation history within a fixed token budget using multi-tier summarization and intelligent context assembly.
 - **User Interface**: Mobile-responsive layout with offcanvas sidebar, settings panel, and dark/light theme toggle.
 - **Mobile Deployment**: Client-server architecture for Termux (backend) and Capacitor/APK (frontend) with automated installation scripts.
-- **GPU Acceleration**: Supports GPU configuration for model inference, including layer offloading and device selection.
+- **GPU Acceleration**: Supports GPU configuration for both chat inference and RAG embeddings, including layer offloading, device selection, thread count, batch size, and low VRAM mode. GPU settings are stored in the application settings and automatically applied to all Ollama API calls.
 
 ### API Endpoints
 - **Models**: `GET /api/models`, `GET /api/models/sync`, `POST /api/models/pull`.
