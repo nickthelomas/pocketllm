@@ -960,6 +960,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Add refresh endpoint to rescan models from Downloads folder
   app.post("/api/models/refresh", async (req, res) => {
     try {
+      // Optional cleanup parameter to delete from Downloads after copy
+      const cleanup = req.query.cleanup === 'true';
       console.log("🔄 Refreshing models from Downloads folder...");
       
       // Import required modules for file operations
@@ -984,6 +986,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       let copiedCount = 0;
       let skippedCount = 0;
+      let cleanedCount = 0;
       
       // Copy new models from Downloads to models folder
       for (const model of downloadModels) {
@@ -994,6 +997,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (existingSet.has(model.filename)) {
           console.log(`⏩ Skipped (already exists): ${model.filename}`);
           skippedCount++;
+          
+          // If cleanup is enabled and model already exists in models folder, delete from Downloads
+          if (cleanup) {
+            try {
+              await fs.promises.unlink(sourceFile);
+              console.log(`🗑️  Cleaned up from Downloads: ${model.filename}`);
+              cleanedCount++;
+            } catch (unlinkError) {
+              console.warn(`⚠️  Could not remove from Downloads: ${model.filename}`);
+            }
+          }
           continue;
         }
         
@@ -1003,6 +1017,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await fs.promises.copyFile(sourceFile, targetFile);
           console.log(`✅ Copied: ${model.filename}`);
           copiedCount++;
+          
+          // If cleanup is enabled, delete from Downloads after successful copy
+          if (cleanup) {
+            try {
+              await fs.promises.unlink(sourceFile);
+              console.log(`🗑️  Cleaned up from Downloads: ${model.filename}`);
+              cleanedCount++;
+            } catch (unlinkError) {
+              console.warn(`⚠️  Could not remove from Downloads: ${model.filename}`);
+            }
+          }
         } catch (copyError) {
           console.error(`❌ Failed to copy ${model.filename}:`, copyError);
         }
@@ -1071,14 +1096,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
-      res.json({ 
+      const response: any = { 
         success: true, 
         modelsFound: downloadModels.length,
         modelsCopied: copiedCount,
         modelsSkipped: skippedCount,
         totalModels: models.length,
         message: `Found ${downloadModels.length} models in Downloads, copied ${copiedCount} new models, ${models.length} total available`
-      });
+      };
+      
+      if (cleanup && cleanedCount > 0) {
+        response.modelsCleaned = cleanedCount;
+        response.message += `, cleaned up ${cleanedCount} files from Downloads`;
+      }
+      
+      res.json(response);
     } catch (error) {
       console.error("❌ Refresh error:", error);
       res.status(500).json({ 
