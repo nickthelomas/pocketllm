@@ -429,7 +429,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Streaming chat endpoint - LOCAL ONLY using Ollama
   app.post("/api/chat/stream", async (req, res) => {
     try {
-      const { message, conversationId, model, context, ragSources: providedRagSources, settings } = req.body;
+      const { message, conversationId, model, context, enableRAG, ragSources: providedRagSources, settings } = req.body;
       
       // Set up SSE headers
       res.writeHead(200, {
@@ -455,35 +455,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.updateConversation(conversationId, { title });
       }
 
-      // Automatically retrieve RAG sources if not provided
+      // Only retrieve RAG sources if explicitly enabled by user via checkbox
       let ragSources = providedRagSources;
-      if (!ragSources || ragSources.length === 0) {
-        const ragEnabled = await storage.getSetting(undefined, "ragEnabled");
+      
+      // Check if user explicitly wants to search documents
+      if (enableRAG === true && (!ragSources || ragSources.length === 0)) {
         const ragTopK = await storage.getSetting(undefined, "ragTopK");
         const ragThreshold = await storage.getSetting(undefined, "ragThreshold");
         
-        if (ragEnabled?.value !== false) {
-          try {
-            const { EmbeddingService } = await import("./services/embeddings");
-            const gpuOptions = await getGPUOptions();
-            const embeddingService = new EmbeddingService("nomic-embed-text", gpuOptions);
-            const queryEmbedding = await embeddingService.generateEmbedding(message);
-            const topK = ragTopK?.value ? parseInt(String(ragTopK.value)) : 5;
-            const threshold = ragThreshold?.value ? parseFloat(String(ragThreshold.value)) : 0.3;
-            
-            const relevantChunks = await storage.searchSimilarChunks(queryEmbedding, topK, threshold);
-            ragSources = relevantChunks.map(chunk => ({
-              content: chunk.content,
-              documentId: chunk.documentId,
-              chunkIndex: chunk.chunkIndex,
-            }));
-          } catch (error) {
-            console.warn("RAG retrieval failed:", error);
-            ragSources = [];
+        try {
+          const { EmbeddingService } = await import("./services/embeddings");
+          const gpuOptions = await getGPUOptions();
+          const embeddingService = new EmbeddingService("nomic-embed-text", gpuOptions);
+          const queryEmbedding = await embeddingService.generateEmbedding(message);
+          const topK = ragTopK?.value ? parseInt(String(ragTopK.value)) : 5;
+          const threshold = ragThreshold?.value ? parseFloat(String(ragThreshold.value)) : 0.3;
+          
+          const relevantChunks = await storage.searchSimilarChunks(queryEmbedding, topK, threshold);
+          ragSources = relevantChunks.map(chunk => ({
+            content: chunk.content,
+            documentId: chunk.documentId,
+            chunkIndex: chunk.chunkIndex,
+          }));
+          
+          if (ragSources.length > 0) {
+            console.log(`📚 RAG: Found ${ragSources.length} relevant document chunks for query`);
+          } else {
+            console.log('📚 RAG: No relevant documents found for query');
           }
-        } else {
+        } catch (error) {
+          console.warn("RAG retrieval failed:", error);
           ragSources = [];
         }
+      } else if (enableRAG === true) {
+        console.log('📚 RAG: Using provided RAG sources');
+      } else {
+        // User didn't check "Search documents", so don't use RAG
+        ragSources = [];
       }
 
       // Get memory settings

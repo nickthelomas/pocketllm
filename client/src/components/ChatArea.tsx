@@ -3,7 +3,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Send, Paperclip, Square, RotateCcw, Settings, Mic, MicOff, Volume2 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Send, Paperclip, Square, RotateCcw, Settings, Mic, MicOff, Volume2, Search } from "lucide-react";
 import MessageBubble from "@/components/MessageBubble";
 import TagsEditor from "@/components/TagsEditor";
 import { queryClient } from "@/lib/queryClient";
@@ -23,6 +24,7 @@ export default function ChatArea({ conversationId, selectedModel, onConversation
   const [streamingMessage, setStreamingMessage] = useState("");
   const [isListening, setIsListening] = useState(false);
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
+  const [searchDocuments, setSearchDocuments] = useState(false);
   const recognitionRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -102,6 +104,7 @@ export default function ChatArea({ conversationId, selectedModel, onConversation
           conversationId: currentConversationId,
           model: selectedModel,
           context: [],
+          enableRAG: searchDocuments, // Pass the checkbox state
           ragSources: [],
           settings: {},
         }),
@@ -459,6 +462,21 @@ export default function ChatArea({ conversationId, selectedModel, onConversation
         <div className="max-w-4xl mx-auto">
           {/* Quick Actions */}
           <div className="flex items-center gap-2 mb-3">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="search-documents"
+                checked={searchDocuments}
+                onCheckedChange={(checked) => setSearchDocuments(checked === true)}
+                data-testid="checkbox-search-documents"
+              />
+              <label
+                htmlFor="search-documents"
+                className="flex items-center gap-1.5 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+              >
+                <Search className="w-3.5 h-3.5" />
+                Search documents
+              </label>
+            </div>
             <Button variant="outline" size="sm" data-testid="button-adjust-context">
               <Settings className="w-3.5 h-3.5 mr-1.5" />
               Context: Last 10 turns
