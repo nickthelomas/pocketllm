@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Download, Loader2, RefreshCw, Wifi, WifiOff, Star } from "lucide-react";
+import { Download, Loader2, RefreshCw, Wifi, WifiOff, Star, Link } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import CloudModelPasswordDialog from "@/components/CloudModelPasswordDialog";
@@ -43,6 +45,8 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
   const [activeTab, setActiveTab] = useState("local");
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [pendingModel, setPendingModel] = useState<string | null>(null);
+  const [customHfUrl, setCustomHfUrl] = useState("");
+  const [customModelName, setCustomModelName] = useState("");
   const [favorites, setFavorites] = useState<string[]>(() => {
     const saved = localStorage.getItem("favoriteModels");
     return saved ? JSON.parse(saved) : [];
@@ -687,39 +691,112 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
               <TabsContent value="local" className="flex-1 mt-3">
                 <div className="max-h-[50vh] overflow-y-auto pr-2">
                   <div className="space-y-3">
-                    <p className="text-sm text-muted-foreground">
-                      Select a model to download:
-                    </p>
-                    
-                    {catalogLocalModels.map((model: CatalogModel) => (
-                      <div 
-                        key={model.name}
-                        className="flex items-center justify-between p-3 border border-border rounded-lg hover:bg-accent/50 transition-colors"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <h4 className="text-sm font-medium truncate">{model.name}</h4>
-                            {model.provider === "huggingface" && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-700 dark:text-orange-300 border border-orange-500/30 shrink-0">
-                                HF
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{model.description}</p>
-                        </div>
-                        <div className="flex items-center gap-3 shrink-0 ml-3">
-                          <span className="text-xs font-mono text-muted-foreground">{model.size}</span>
-                          <Button
-                            size="sm"
-                            onClick={() => pullModelMutation.mutate({ name: model.name, source: model.source, downloadUrl: model.downloadUrl })}
-                            disabled={pullModelMutation.isPending}
-                            data-testid={`button-pull-${model.name}`}
-                          >
-                            Pull
-                          </Button>
-                        </div>
+                    {/* Custom HuggingFace URL Input */}
+                    <div className="p-3 border border-border rounded-lg bg-muted/30">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Link className="w-4 h-4 text-primary" />
+                        <h4 className="text-sm font-medium">Custom HuggingFace Model</h4>
                       </div>
-                    ))}
+                      <div className="space-y-3">
+                        <div>
+                          <Label htmlFor="custom-model-name" className="text-xs">Model Name</Label>
+                          <Input
+                            id="custom-model-name"
+                            type="text"
+                            placeholder="e.g., my-custom-model"
+                            value={customModelName}
+                            onChange={(e) => setCustomModelName(e.target.value)}
+                            className="h-8 text-xs"
+                            data-testid="input-custom-model-name"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="custom-hf-url" className="text-xs">HuggingFace GGUF URL</Label>
+                          <Input
+                            id="custom-hf-url"
+                            type="url"
+                            placeholder="https://huggingface.co/.../model.gguf"
+                            value={customHfUrl}
+                            onChange={(e) => setCustomHfUrl(e.target.value)}
+                            className="h-8 text-xs"
+                            data-testid="input-custom-hf-url"
+                          />
+                          <p className="text-[10px] text-muted-foreground mt-1">
+                            Direct URL to a GGUF file on HuggingFace (must be HTTPS)
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          className="w-full"
+                          onClick={() => {
+                            if (!customModelName.trim()) {
+                              toast({
+                                title: "Model name required",
+                                description: "Please enter a name for the custom model",
+                                variant: "destructive"
+                              });
+                              return;
+                            }
+                            if (!customHfUrl.trim() || !customHfUrl.startsWith("https://huggingface.co/")) {
+                              toast({
+                                title: "Invalid URL",
+                                description: "URL must be from huggingface.co and use HTTPS",
+                                variant: "destructive"
+                              });
+                              return;
+                            }
+                            pullModelMutation.mutate({
+                              name: customModelName.trim(),
+                              source: "huggingface",
+                              downloadUrl: customHfUrl.trim()
+                            });
+                            setCustomModelName("");
+                            setCustomHfUrl("");
+                          }}
+                          disabled={pullModelMutation.isPending || !customModelName.trim() || !customHfUrl.trim()}
+                          data-testid="button-pull-custom"
+                        >
+                          <Download className="w-3 h-3 mr-1.5" />
+                          Download Custom Model
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-border pt-3">
+                      <p className="text-sm text-muted-foreground mb-3">
+                        📱 Curated Mobile Models
+                      </p>
+                      
+                      {catalogLocalModels.map((model: CatalogModel) => (
+                        <div 
+                          key={model.name}
+                          className="flex items-center justify-between p-3 border border-border rounded-lg hover:bg-accent/50 transition-colors mb-2"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-sm font-medium truncate">{model.name}</h4>
+                              {model.provider === "huggingface" && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-700 dark:text-orange-300 border border-orange-500/30 shrink-0">
+                                  HF
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{model.description}</p>
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0 ml-3">
+                            <span className="text-xs font-mono text-muted-foreground">{model.size}</span>
+                            <Button
+                              size="sm"
+                              onClick={() => pullModelMutation.mutate({ name: model.name, source: model.source, downloadUrl: model.downloadUrl })}
+                              disabled={pullModelMutation.isPending}
+                              data-testid={`button-pull-${model.name}`}
+                            >
+                              Pull
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </TabsContent>
