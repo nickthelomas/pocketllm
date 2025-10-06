@@ -31,7 +31,6 @@ Pocket LLM is a local-first, full-stack LLM application designed for mobile use 
 - **User Interface**: Mobile-responsive layout with offcanvas sidebar, settings panel, and dark/light theme toggle.
 - **Mobile Deployment**: Client-server architecture for Termux (backend) and Capacitor/APK (frontend) with automated installation scripts.
 - **GPU Acceleration**: Supports GPU configuration for model inference, including layer offloading and device selection.
-- **MCP Tool Execution**: Secure tool execution service with demo tools (search, calculate, weather, data fetching, code execution) and API integration.
 
 ### API Endpoints
 - **Models**: `GET /api/models`, `GET /api/models/sync`, `POST /api/models/pull`.
@@ -39,7 +38,6 @@ Pocket LLM is a local-first, full-stack LLM application designed for mobile use 
 - **Conversations & Messages**: Full CRUD operations.
 - **RAG Documents**: `POST /api/rag/upload`, `GET /api/rag/documents`, `DELETE /api/rag/documents/:id`.
 - **Settings**: Key-value store per user.
-- **MCP Tools**: `/api/mcp/tools/execute`, `/api/mcp/servers/:id/test`.
 
 ### Data Model
 - **Models**: Stores model metadata, restricted to `ollama`, `huggingface`, `local-file`, `openrouter`, `remote-ollama` providers.

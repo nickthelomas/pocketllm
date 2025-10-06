@@ -75,17 +75,6 @@ export const settings = pgTable("settings", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-// MCP Servers table
-export const mcpServers = pgTable("mcp_servers", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: text("name").notNull(),
-  endpoint: text("endpoint").notNull(),
-  description: text("description"),
-  tools: jsonb("tools"), // Array of available tools
-  isActive: boolean("is_active").default(true),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
 // Conversation Summaries table for hierarchical memory
 export const conversationSummaries = pgTable("conversation_summaries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -140,11 +129,6 @@ export const insertSettingsSchema = createInsertSchema(settings).omit({
   updatedAt: true,
 });
 
-export const insertMcpServerSchema = createInsertSchema(mcpServers).omit({
-  id: true,
-  createdAt: true,
-});
-
 export const insertConversationSummarySchema = createInsertSchema(conversationSummaries).omit({
   id: true,
   createdAt: true,
@@ -171,9 +155,6 @@ export type InsertModel = z.infer<typeof insertModelSchema>;
 
 export type Settings = typeof settings.$inferSelect;
 export type InsertSettings = z.infer<typeof insertSettingsSchema>;
-
-export type McpServer = typeof mcpServers.$inferSelect;
-export type InsertMcpServer = z.infer<typeof insertMcpServerSchema>;
 
 export type ConversationSummary = typeof conversationSummaries.$inferSelect;
 export type InsertConversationSummary = z.infer<typeof insertConversationSummarySchema>;

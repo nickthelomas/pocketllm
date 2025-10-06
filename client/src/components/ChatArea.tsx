@@ -5,7 +5,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Send, Paperclip, Square, RotateCcw, Settings, Mic, MicOff, Volume2 } from "lucide-react";
 import MessageBubble from "@/components/MessageBubble";
-import MCPToolsDialog from "@/components/MCPToolsDialog";
 import TagsEditor from "@/components/TagsEditor";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
@@ -22,7 +21,6 @@ export default function ChatArea({ conversationId, selectedModel, onConversation
   const [message, setMessage] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingMessage, setStreamingMessage] = useState("");
-  const [showMCPTools, setShowMCPTools] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
@@ -461,15 +459,6 @@ export default function ChatArea({ conversationId, selectedModel, onConversation
         <div className="max-w-4xl mx-auto">
           {/* Quick Actions */}
           <div className="flex items-center gap-2 mb-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowMCPTools(true)}
-              data-testid="button-mcp-tools"
-            >
-              <Settings className="w-3.5 h-3.5 mr-1.5" />
-              MCP Tools
-            </Button>
             <Button variant="outline" size="sm" data-testid="button-adjust-context">
               <Settings className="w-3.5 h-3.5 mr-1.5" />
               Context: Last 10 turns
@@ -538,8 +527,6 @@ export default function ChatArea({ conversationId, selectedModel, onConversation
           )}
         </div>
       </div>
-
-      <MCPToolsDialog open={showMCPTools} onOpenChange={setShowMCPTools} />
     </>
   );
 }

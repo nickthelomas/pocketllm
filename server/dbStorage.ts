@@ -9,13 +9,12 @@ import type {
   RagChunk, InsertRagChunk,
   Model, InsertModel,
   Settings, InsertSettings,
-  McpServer, InsertMcpServer,
   ConversationSummary, InsertConversationSummary
 } from "@shared/schema";
 import { 
   users, conversations, messages, 
   ragDocuments, ragChunks, models, 
-  settings, mcpServers, conversationSummaries 
+  settings, conversationSummaries 
 } from "@shared/schema";
 
 export class DbStorage implements IStorage {
@@ -278,34 +277,6 @@ export class DbStorage implements IStorage {
 
   async deleteSetting(id: string): Promise<boolean> {
     const result = await db.delete(settings).where(eq(settings.id, id)).returning();
-    return result.length > 0;
-  }
-
-  // MCP Servers
-  async getMcpServers(): Promise<McpServer[]> {
-    return db.select().from(mcpServers).orderBy(mcpServers.name);
-  }
-
-  async getMcpServer(id: string): Promise<McpServer | undefined> {
-    const result = await db.select().from(mcpServers).where(eq(mcpServers.id, id)).limit(1);
-    return result[0];
-  }
-
-  async createMcpServer(data: InsertMcpServer): Promise<McpServer> {
-    const result = await db.insert(mcpServers).values(data).returning();
-    return result[0];
-  }
-
-  async updateMcpServer(id: string, updates: Partial<McpServer>): Promise<McpServer | undefined> {
-    const result = await db.update(mcpServers)
-      .set(updates)
-      .where(eq(mcpServers.id, id))
-      .returning();
-    return result[0];
-  }
-
-  async deleteMcpServer(id: string): Promise<boolean> {
-    const result = await db.delete(mcpServers).where(eq(mcpServers.id, id)).returning();
     return result.length > 0;
   }
 }

@@ -1,4 +1,4 @@
-import { type User, type InsertUser, type Conversation, type InsertConversation, type Message, type InsertMessage, type RagDocument, type InsertRagDocument, type RagChunk, type InsertRagChunk, type Model, type InsertModel, type Settings, type InsertSettings, type McpServer, type InsertMcpServer, type ConversationSummary, type InsertConversationSummary } from "@shared/schema";
+import { type User, type InsertUser, type Conversation, type InsertConversation, type Message, type InsertMessage, type RagDocument, type InsertRagDocument, type RagChunk, type InsertRagChunk, type Model, type InsertModel, type Settings, type InsertSettings, type ConversationSummary, type InsertConversationSummary } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -49,13 +49,6 @@ export interface IStorage {
   getSettings(userId?: string): Promise<Settings[]>;
   getSetting(userId: string | undefined, key: string): Promise<Settings | undefined>;
   setSetting(setting: InsertSettings): Promise<Settings>;
-
-  // MCP Servers
-  getMcpServers(): Promise<McpServer[]>;
-  getMcpServer(id: string): Promise<McpServer | undefined>;
-  createMcpServer(server: InsertMcpServer): Promise<McpServer>;
-  updateMcpServer(id: string, updates: Partial<McpServer>): Promise<McpServer | undefined>;
-  deleteMcpServer(id: string): Promise<boolean>;
 }
 
 export class MemStorage implements IStorage {
@@ -66,7 +59,6 @@ export class MemStorage implements IStorage {
   private ragChunks: Map<string, RagChunk> = new Map();
   private models: Map<string, Model> = new Map();
   private settings: Map<string, Settings> = new Map();
-  private mcpServers: Map<string, McpServer> = new Map();
   private conversationSummaries: Map<string, ConversationSummary> = new Map();
 
   constructor() {
@@ -388,42 +380,6 @@ export class MemStorage implements IStorage {
       this.settings.set(id, setting);
       return setting;
     }
-  }
-
-  // MCP Servers
-  async getMcpServers(): Promise<McpServer[]> {
-    return Array.from(this.mcpServers.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }
-
-  async getMcpServer(id: string): Promise<McpServer | undefined> {
-    return this.mcpServers.get(id);
-  }
-
-  async createMcpServer(insertServer: InsertMcpServer): Promise<McpServer> {
-    const id = randomUUID();
-    const server: McpServer = {
-      ...insertServer,
-      description: insertServer.description ?? null,
-      tools: insertServer.tools ?? null,
-      isActive: insertServer.isActive ?? null,
-      id,
-      createdAt: new Date(),
-    };
-    this.mcpServers.set(id, server);
-    return server;
-  }
-
-  async updateMcpServer(id: string, updates: Partial<McpServer>): Promise<McpServer | undefined> {
-    const server = this.mcpServers.get(id);
-    if (!server) return undefined;
-    
-    const updated: McpServer = { ...server, ...updates };
-    this.mcpServers.set(id, updated);
-    return updated;
-  }
-
-  async deleteMcpServer(id: string): Promise<boolean> {
-    return this.mcpServers.delete(id);
   }
 }
 

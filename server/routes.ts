@@ -1,7 +1,7 @@
 import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storageSelector";
-import { insertConversationSchema, insertMessageSchema, insertRagDocumentSchema, insertModelSchema, insertSettingsSchema, insertMcpServerSchema } from "@shared/schema";
+import { insertConversationSchema, insertMessageSchema, insertRagDocumentSchema, insertModelSchema, insertSettingsSchema } from "@shared/schema";
 import multer from "multer";
 import { z } from "zod";
 import { ollamaService } from "./services/ollama";
@@ -1474,78 +1474,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(setting);
     } catch (error) {
       res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
-    }
-  });
-
-  // MCP Servers
-  app.get("/api/mcp/servers", async (req, res) => {
-    try {
-      const servers = await storage.getMcpServers();
-      res.json(servers);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch MCP servers" });
-    }
-  });
-
-  app.post("/api/mcp/servers", async (req, res) => {
-    try {
-      const data = insertMcpServerSchema.parse(req.body);
-      const server = await storage.createMcpServer(data);
-      res.json(server);
-    } catch (error) {
-      res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
-    }
-  });
-
-  app.delete("/api/mcp/servers/:id", async (req, res) => {
-    try {
-      const { id } = req.params;
-      const success = await storage.deleteMcpServer(id);
-      if (!success) {
-        return res.status(404).json({ error: "MCP server not found" });
-      }
-      res.json({ success: true });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to delete MCP server" });
-    }
-  });
-
-  // MCP Tool Execution
-  app.post("/api/mcp/tools/execute", async (req, res) => {
-    try {
-      const { mcpService } = await import("./services/mcp");
-      const { serverId, toolName, args } = req.body;
-
-      if (!serverId || !toolName) {
-        return res.status(400).json({ error: "serverId and toolName are required" });
-      }
-
-      const result = await mcpService.executeTool({
-        serverId,
-        toolName,
-        args: args || {},
-      });
-
-      if (!result.success) {
-        return res.status(400).json({ error: result.error });
-      }
-
-      res.json(result);
-    } catch (error) {
-      console.error("MCP tool execution error:", error);
-      res.status(500).json({ error: "Failed to execute MCP tool" });
-    }
-  });
-
-  // Test MCP server connection
-  app.post("/api/mcp/servers/:id/test", async (req, res) => {
-    try {
-      const { mcpService } = await import("./services/mcp");
-      const { id } = req.params;
-      const result = await mcpService.testConnection(id);
-      res.json(result);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to test MCP server connection" });
     }
   });
 

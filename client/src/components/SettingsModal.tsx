@@ -14,7 +14,7 @@ import { Trash2, Plus, Settings2, User, Zap, Database, Cog, Shield } from "lucid
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Settings as SettingsType, McpServer } from "@shared/schema";
+import type { Settings as SettingsType } from "@shared/schema";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -111,11 +111,6 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     enabled: isOpen,
   });
 
-  const { data: mcpServers = [] } = useQuery<McpServer[]>({
-    queryKey: ["/api/mcp/servers"],
-    enabled: isOpen,
-  });
-
   const saveSettingsMutation = useMutation({
     mutationFn: async (settingsToSave: typeof settings) => {
       // Save each setting individually
@@ -141,18 +136,6 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         title: "Failed to save settings",
         description: error.message,
         variant: "destructive",
-      });
-    },
-  });
-
-  const deleteMcpServerMutation = useMutation({
-    mutationFn: async (id: string) => {
-      return apiRequest("DELETE", `/api/mcp/servers/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/mcp/servers"] });
-      toast({
-        title: "MCP server removed",
       });
     },
   });
@@ -200,32 +183,6 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       gpu_threads: 4,
       gpu_batch_size: 512,
     });
-  };
-
-  const addMcpServer = () => {
-    const name = prompt("Enter MCP server name:");
-    const endpoint = prompt("Enter MCP server endpoint:");
-    
-    if (name && endpoint) {
-      apiRequest("POST", "/api/mcp/servers", {
-        name,
-        endpoint,
-        description: "Custom MCP server",
-        tools: [],
-        isActive: true,
-      }).then(() => {
-        queryClient.invalidateQueries({ queryKey: ["/api/mcp/servers"] });
-        toast({
-          title: "MCP server added",
-        });
-      }).catch((error) => {
-        toast({
-          title: "Failed to add MCP server",
-          description: error.message,
-          variant: "destructive",
-        });
-      });
-    }
   };
 
   return (
@@ -666,68 +623,6 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </svg>
                 <p className="text-xs text-accent">Profile is active and will be included in all conversations</p>
               </div>
-            </div>
-          </section>
-
-          <Separator />
-
-          {/* MCP Servers */}
-          <section>
-            <div className="flex items-center gap-2 mb-4">
-              <Settings2 className="w-5 h-5 text-primary" />
-              <h3 className="text-lg font-semibold">MCP Tool Servers</h3>
-            </div>
-            
-            <div className="space-y-3">
-              {mcpServers.map((server) => (
-                <div key={server.id} className="bg-background/50 border border-border rounded-lg p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <h4 className="text-sm font-semibold">{server.name}</h4>
-                        <Badge variant={server.isActive ? "default" : "secondary"}>
-                          {server.isActive ? "Active" : "Inactive"}
-                        </Badge>
-                      </div>
-                      {server.description && (
-                        <p className="text-xs text-muted-foreground mb-3">{server.description}</p>
-                      )}
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2 text-xs">
-                          <span className="text-muted-foreground">Endpoint:</span>
-                          <code className="font-mono text-foreground">{server.endpoint}</code>
-                        </div>
-                        {server.tools && Array.isArray(server.tools) && server.tools.length > 0 && (
-                          <div className="flex items-center gap-2 text-xs">
-                            <span className="text-muted-foreground">Tools:</span>
-                            <span className="text-foreground">{(server.tools as string[]).join(", ")}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="hover:bg-destructive/20 text-destructive"
-                      onClick={() => deleteMcpServerMutation.mutate(server.id)}
-                      disabled={deleteMcpServerMutation.isPending}
-                      data-testid={`button-remove-mcp-server-${server.id}`}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-              
-              <Button
-                variant="outline"
-                className="w-full border-dashed"
-                onClick={addMcpServer}
-                data-testid="button-add-mcp-server"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Register New MCP Server
-              </Button>
             </div>
           </section>
 
