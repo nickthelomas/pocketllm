@@ -73,9 +73,38 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
 
   const availableModels = models.filter(model => model.isAvailable);
 
-  const localModels = availableModels.filter(m => 
+  // Deduplicate local models by name, preferring ollama > huggingface > local-file
+  const localModelsRaw = availableModels.filter(m => 
     ['ollama', 'huggingface', 'local-file'].includes(m.provider)
   );
+  
+  // Group models by base name and select the best provider
+  const modelsByName = new Map<string, Model>();
+  const providerPriority = ['ollama', 'huggingface', 'local-file'];
+  
+  for (const model of localModelsRaw) {
+    // Extract base name (remove version tags like :1b, :Q4_K_M, etc)
+    const baseName = model.name.split(':')[0];
+    const existing = modelsByName.get(baseName);
+    
+    if (!existing) {
+      modelsByName.set(baseName, model);
+    } else {
+      // Compare provider priority
+      const existingPriority = providerPriority.indexOf(existing.provider);
+      const newPriority = providerPriority.indexOf(model.provider);
+      
+      // Lower index = higher priority
+      if (newPriority < existingPriority) {
+        modelsByName.set(baseName, model);
+      } else if (newPriority === existingPriority && model.name === baseName) {
+        // Same provider, prefer exact name match (no version suffix)
+        modelsByName.set(baseName, model);
+      }
+    }
+  }
+  
+  const localModels = Array.from(modelsByName.values());
   const cloudModels = availableModels.filter(m => m.provider === 'openrouter');
   const remoteModels = availableModels.filter(m => m.provider === 'remote-ollama');
   const favoriteModels = cloudModels.filter(m => favorites.includes(m.name));
