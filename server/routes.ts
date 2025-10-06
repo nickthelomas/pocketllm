@@ -117,6 +117,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const loadedModelName = ollama.getLoadedModel();
       console.log(`🔍 Health check - loaded model: "${loadedModelName}"`);
       
+      // Detect GPU bridge mode
+      let isGpuBridge = false;
+      let gpuEnabled = false;
+      const isOnlineInitial = await ollama.isAvailable();
+      
+      if (isOnlineInitial) {
+        try {
+          const baseUrl = ollama.getBaseUrl();
+          const healthResponse = await fetch(`${baseUrl}/api/health`, {
+            method: "GET",
+            signal: AbortSignal.timeout(2000),
+          });
+          if (healthResponse.ok) {
+            const healthData = await healthResponse.json();
+            gpuEnabled = healthData.gpu_enabled === true;
+            isGpuBridge = gpuEnabled;
+          }
+        } catch (error) {
+          // Health check failed, assume standard Ollama
+        }
+      }
+      
+      const serviceName = isGpuBridge ? "GPU Bridge" : "Ollama";
+      
       // If a model is loaded, check its provider
       if (loadedModelName) {
         const modelInfo = await storage.getModel(loadedModelName);
@@ -147,19 +171,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
             health.ollama.message = "Remote Ollama URL not configured";
           }
         } else {
-          // Local model (ollama, huggingface, local-file) - check local Ollama
+          // Local model (ollama, huggingface, local-file) - check local Ollama/GPU Bridge
           const isOnline = await ollama.isAvailable();
           
           if (!isOnline) {
             health.ollama.status = "error";
-            health.ollama.message = "Ollama server not responding";
+            health.ollama.message = `${serviceName} server not responding`;
           } else {
             const models = await ollama.listModels();
             const modelExists = models.some(m => m.name === loadedModelName);
             
             if (modelExists) {
               health.ollama.status = "ok";
-              health.ollama.message = `Ollama connected - ${models.length} models available - Active: ${loadedModelName}`;
+              const gpuSuffix = isGpuBridge ? " [GPU]" : "";
+              health.ollama.message = `${serviceName} connected - ${models.length} models available - Active: ${loadedModelName}${gpuSuffix}`;
             } else {
               health.ollama.status = "error";
               health.ollama.message = `Model "${loadedModelName}" failed to load or not found`;
@@ -167,16 +192,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
       } else {
-        // No model loaded - check if Ollama is at least online
+        // No model loaded - check if Ollama/GPU Bridge is at least online
         const isOnline = await ollama.isAvailable();
         
         if (!isOnline) {
           health.ollama.status = "error";
-          health.ollama.message = "Ollama server not responding";
+          health.ollama.message = `${serviceName} server not responding`;
         } else {
           const models = await ollama.listModels();
           health.ollama.status = "warning";
-          health.ollama.message = `Ollama connected - ${models.length} models available - No model loaded yet`;
+          const gpuSuffix = isGpuBridge ? " [GPU]" : "";
+          health.ollama.message = `${serviceName} connected - ${models.length} models available - No model loaded yet${gpuSuffix}`;
         }
       }
     } catch (err) {

@@ -154,14 +154,14 @@ export default function SystemHealthViewer({ open, onOpenChange }: SystemHealthV
               </div>
             </div>
 
-            {/* Ollama Status */}
+            {/* LLM Server Status (Ollama or GPU Bridge) */}
             <div className="p-4 rounded-lg border border-border bg-card">
               <div className="flex items-start justify-between">
                 <div className="flex items-start gap-3 flex-1">
                   {getStatusIcon(health?.ollama.status || "unknown")}
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <h4 className="font-medium">Ollama LLM Server</h4>
+                      <h4 className="font-medium">LLM Server</h4>
                       {health && getStatusBadge(health.ollama.status)}
                     </div>
                     <p className="text-sm text-muted-foreground">
@@ -188,7 +188,7 @@ export default function SystemHealthViewer({ open, onOpenChange }: SystemHealthV
                   <li>• Database: Check that PostgreSQL is running and DATABASE_URL is set</li>
                 )}
                 {health.ollama.status !== "ok" && (
-                  <li>• Ollama: Run <code className="px-1 py-0.5 bg-background rounded">ollama serve</code> in Termux</li>
+                  <li>• LLM Server: Start Ollama (<code className="px-1 py-0.5 bg-background rounded">ollama serve</code>) or GPU Bridge in Termux</li>
                 )}
                 <li>• For Termux: Use the "PocketLLM — Start Servers" widget</li>
                 <li>• Check logs in <code className="px-1 py-0.5 bg-background rounded">~/pocketllm/data/</code></li>
