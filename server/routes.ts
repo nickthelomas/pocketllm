@@ -582,12 +582,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.updateModel(modelId, { isAvailable: false });
       }
       
-      // Sync models from Ollama with configured base URL
+      // Detect GPU bridge mode by checking health endpoint
+      let isGpuBridge = false;
       const ollama = await getOllamaService();
       const ollamaAvailable = await ollama.isAvailable();
+      
+      if (ollamaAvailable) {
+        try {
+          const baseUrl = ollama.getBaseUrl();
+          const healthResponse = await fetch(`${baseUrl}/api/health`, {
+            method: "GET",
+            signal: AbortSignal.timeout(2000),
+          });
+          if (healthResponse.ok) {
+            const healthData = await healthResponse.json();
+            isGpuBridge = healthData.gpu_enabled === true;
+            console.log(`🔍 GPU bridge detection: gpu_enabled=${isGpuBridge}`);
+          }
+        } catch (error) {
+          // Health check failed, assume standard Ollama
+          console.log('Health check failed during sync, assuming standard Ollama');
+        }
+      }
+      
+      // Sync models from Ollama with configured base URL
       if (ollamaAvailable) {
         const ollamaModels = await ollama.listModels();
-        console.log(`📋 Found ${ollamaModels.length} models from Ollama/GPU bridge`);
+        console.log(`📋 Found ${ollamaModels.length} models from ${isGpuBridge ? 'GPU bridge' : 'Ollama'}`);
         
         for (const ollamaModel of ollamaModels) {
           const existing = await storage.getModel(ollamaModel.name);
@@ -620,6 +641,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const localModels = await modelDirectoryScanner.scanModels();
       for (const localModel of localModels) {
         const existing = await storage.getModel(localModel.name);
+        
+        // Skip if already synced as Ollama model AND we're in GPU bridge mode
+        // (GPU bridge serves local GGUF files via Ollama API, causing duplicates)
+        // In standard Ollama mode, allow both providers to coexist (user may have local copies)
+        if (isGpuBridge && existing && existing.provider === "ollama") {
+          console.log(`⏭️  Skipping ${localModel.name} - already synced via GPU bridge`);
+          continue;
+        }
+        
         if (!existing) {
           await storage.createModel({
             name: localModel.name,
@@ -627,6 +657,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             isAvailable: true,
             parameters: { path: localModel.path },
           });
+          console.log(`✅ Added local-file model: ${localModel.name}`);
         } else if (existing.provider === "local-file") {
           // Backfill path for existing local-file models that may be missing it
           const params = (existing.parameters as any) ?? {};
@@ -637,11 +668,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
             });
           }
         }
-        syncedModels.push({
-          name: localModel.name,
-          provider: "local-file",
-          path: localModel.path,
-        });
+        
+        // Only add to syncedModels if not a GPU bridge duplicate
+        if (!isGpuBridge || !existing || existing.provider !== "ollama") {
+          syncedModels.push({
+            name: localModel.name,
+            provider: "local-file",
+            path: localModel.path,
+          });
+        }
       }
 
       // Sync OpenRouter models if API key is configured
