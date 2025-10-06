@@ -808,23 +808,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/models/pull", async (req, res) => {
     try {
-      const { name, source = "ollama" } = req.body;
+      const { name, source = "ollama", downloadUrl } = req.body;
       if (!name) {
         return res.status(400).json({ error: "Model name is required" });
       }
 
       console.log(`📥 Pull request for model: ${name} (source: ${source})`);
-
-      const ollama = await getOllamaService();
-      const ollamaAvailable = await ollama.isAvailable();
-      
-      if (!ollamaAvailable) {
-        console.log(`❌ Ollama not available for pull`);
-        return res.status(503).json({ 
-          error: "Network unavailable",
-          message: "Ollama not running or network down"
-        });
-      }
 
       // Set up SSE for pull progress
       res.writeHead(200, {
@@ -833,9 +822,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         'Connection': 'keep-alive',
       });
 
+      const ollama = await getOllamaService();
+      const ollamaAvailable = await ollama.isAvailable();
+
+      // For HuggingFace downloads, go directly to local-file mode (GPU bridge compatible)
       if (source === "huggingface") {
-        // HuggingFace models: Download GGUF and import to Ollama
-        const { downloadUrl } = req.body;
         if (!downloadUrl) {
           res.write(`data: ${JSON.stringify({ 
             error: "Download URL is required for HuggingFace models" 
@@ -867,10 +858,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return;
         }
 
-        console.log(`🤗 HuggingFace import: ${name}`);
+        console.log(`🤗 HuggingFace GGUF download: ${name}`);
         console.log(`📥 Downloading from: ${downloadUrl}`);
 
         try {
+          // Determine models directory (Termux or local)
+          const modelsDir = process.env.HOME 
+            ? path.join(process.env.HOME, 'PocketLLM', 'models')
+            : path.join(process.cwd(), 'models');
+          
+          await fs.mkdir(modelsDir, { recursive: true });
+          
+          // Sanitize filename from URL
+          const urlFilename = downloadUrl.split('/').pop() || 'model.gguf';
+          const safeFilename = urlFilename.replace(/[^a-zA-Z0-9._-]/g, '-');
+          const targetPath = path.join(modelsDir, safeFilename);
+          
+          // Check if already exists
+          try {
+            await fs.access(targetPath);
+            console.log(`ℹ️  Model already exists at: ${targetPath}`);
+            res.write(`data: ${JSON.stringify({ progress: 100, status: 'already exists' })}\n\n`);
+            
+            // Ensure it's in database
+            const modelName = safeFilename.replace('.gguf', '');
+            const existingModels = await storage.getModels();
+            const modelExists = existingModels.some(m => m.name === modelName);
+            
+            if (!modelExists) {
+              console.log(`➕ Adding existing model to database: ${modelName}`);
+              await storage.createModel({
+                name: modelName,
+                provider: "local-file",
+                isAvailable: true,
+                parameters: { 
+                  source: "huggingface",
+                  path: targetPath 
+                },
+              });
+            }
+            
+            res.write(`data: [DONE]\n\n`);
+            res.end();
+            return;
+          } catch {
+            // File doesn't exist, proceed with download
+          }
+          
           // Download GGUF file with progress tracking
           const response = await fetch(downloadUrl);
           if (!response.ok) {
@@ -879,31 +913,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           const totalSize = parseInt(response.headers.get('content-length') || '0');
           let downloadedSize = 0;
-
-          // Create temp file path (use project directory for Termux compatibility)
-          const { mkdirSync, createWriteStream, unlinkSync, existsSync } = await import('fs');
-          const { join } = await import('path');
           
-          const tempDir = join(process.cwd(), '.temp-models');
-          if (!existsSync(tempDir)) {
-            mkdirSync(tempDir, { recursive: true, mode: 0o755 });
-          }
-          const filename = downloadUrl.split('/').pop() || 'model.gguf';
-          const tempFilePath = join(tempDir, filename);
-          
-          // Stream download with progress
-          const fileStream = createWriteStream(tempFilePath);
+          const fileHandle = await fs.open(targetPath, 'w');
           const reader = response.body?.getReader();
           
           if (!reader) throw new Error('No response body');
-
-          res.write(`data: ${JSON.stringify({ progress: 0, status: 'downloading' })}\n\n`);
-
+          
+          res.write(`data: ${JSON.stringify({ progress: 0, status: 'downloading GGUF' })}\n\n`);
+          
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
             
-            fileStream.write(value);
+            await fileHandle.write(value);
             downloadedSize += value.length;
             const progress = totalSize > 0 ? (downloadedSize / totalSize) * 100 : 0;
             
@@ -912,65 +934,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
               status: `downloading ${(downloadedSize / 1024 / 1024).toFixed(1)}MB / ${(totalSize / 1024 / 1024).toFixed(1)}MB` 
             })}\n\n`);
           }
-
-          fileStream.end();
-          console.log(`✅ Download complete: ${tempFilePath}`);
-
-          // Create Modelfile
-          res.write(`data: ${JSON.stringify({ progress: 100, status: 'creating modelfile' })}\n\n`);
           
-          const { writeFileSync } = await import('fs');
-          const modelfilePath = join(tempDir, 'Modelfile');
-          const modelfile = `FROM ${tempFilePath}\n`;
-          writeFileSync(modelfilePath, modelfile);
-          console.log(`📝 Modelfile created: ${modelfilePath}`);
-
-          // Import to Ollama using ollama create
-          res.write(`data: ${JSON.stringify({ progress: 100, status: 'importing to ollama' })}\n\n`);
+          await fileHandle.close();
+          console.log(`✅ Download complete: ${targetPath}`);
           
-          const { execFile } = await import('child_process');
-          const { promisify } = await import('util');
-          const execFileAsync = promisify(execFile);
-
-          // Sanitize model name: only allow alphanumeric, hyphens, underscores, and dots
-          const ollamaName = name
-            .split(':')[0]
-            .replace(/[^a-zA-Z0-9._-]/g, '-')
-            .toLowerCase()
-            .slice(0, 64); // Limit length
-          
-          console.log(`🔄 Running: ollama create ${ollamaName} -f ${modelfilePath}`);
-          
-          // Use execFile to prevent command injection
-          const { stdout, stderr } = await execFileAsync('ollama', ['create', ollamaName, '-f', modelfilePath]);
-          if (stderr) console.log(`Ollama stderr: ${stderr}`);
-          console.log(`Ollama stdout: ${stdout}`);
-
-          // Clean up temp files
-          unlinkSync(tempFilePath);
-          unlinkSync(modelfilePath);
-          console.log(`🧹 Cleanup complete`);
-
-          // Verify and add to storage
-          const ollamaModels = await ollama.listModels();
-          const modelInOllama = ollamaModels.some(m => m.name === ollamaName);
-          
-          if (!modelInOllama) {
-            throw new Error("Model import completed but model not found in Ollama");
-          }
-
+          // Add to database as local-file (GPU bridge compatible)
+          const modelName = safeFilename.replace('.gguf', '');
           const existingModels = await storage.getModels();
-          const modelExists = existingModels.some(m => m.name === ollamaName);
+          const modelExists = existingModels.some(m => m.name === modelName);
           
           if (!modelExists) {
+            console.log(`➕ Adding model to database: ${modelName}`);
             await storage.createModel({
-              name: ollamaName,
-              provider: "ollama",
+              name: modelName,
+              provider: "local-file",
               isAvailable: true,
-              parameters: { source: "huggingface" },
+              parameters: { 
+                source: "huggingface",
+                path: targetPath 
+              },
             });
           }
-
+          
+          res.write(`data: ${JSON.stringify({ progress: 100, status: 'ready for use' })}\n\n`);
           res.write(`data: [DONE]\n\n`);
           res.end();
           return;
@@ -984,7 +970,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Ollama registry pull (default)
+      // Ollama registry pull (default) - requires Ollama to be running
+      if (!ollamaAvailable) {
+        console.log(`❌ Ollama not available for registry pull`);
+        res.write(`data: ${JSON.stringify({ 
+          error: "Ollama not running. For GPU bridge mode, download models from HuggingFace catalog instead." 
+        })}\n\n`);
+        res.end();
+        return;
+      }
+      
       console.log(`🔄 Starting Ollama pull for: ${name}`);
       
       try {
