@@ -962,33 +962,120 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       console.log("🔄 Refreshing models from Downloads folder...");
       
-      // Scan for GGUF files in Downloads
-      const localModels = await modelDirectoryScanner.scanModels();
-      console.log(`📁 Found ${localModels.length} GGUF models in Downloads`);
+      // Import required modules for file operations
+      const fs = await import('fs');
+      const path = await import('path');
+      const os = await import('os');
       
-      // Sync to database
-      for (const localModel of localModels) {
-        const existing = await storage.getModel(localModel.name);
+      // Define both directories
+      const downloadsDir = path.join(os.homedir(), 'storage', 'downloads');
+      const modelsDir = path.join(os.homedir(), 'PocketLLM', 'models');
+      
+      // Ensure models directory exists
+      await fs.promises.mkdir(modelsDir, { recursive: true });
+      
+      // Scan for GGUF files in Downloads
+      const downloadModels = await modelDirectoryScanner.scanModels();
+      console.log(`📁 Found ${downloadModels.length} GGUF models in Downloads`);
+      
+      // Get existing models in models folder
+      const existingFiles = await fs.promises.readdir(modelsDir).catch(() => []);
+      const existingSet = new Set(existingFiles.filter(f => f.endsWith('.gguf')));
+      
+      let copiedCount = 0;
+      let skippedCount = 0;
+      
+      // Copy new models from Downloads to models folder
+      for (const model of downloadModels) {
+        const sourceFile = model.path;
+        const targetFile = path.join(modelsDir, model.filename);
+        
+        // Check if model already exists in models folder
+        if (existingSet.has(model.filename)) {
+          console.log(`⏩ Skipped (already exists): ${model.filename}`);
+          skippedCount++;
+          continue;
+        }
+        
+        try {
+          // Copy the file
+          console.log(`📋 Copying ${model.filename} to models folder...`);
+          await fs.promises.copyFile(sourceFile, targetFile);
+          console.log(`✅ Copied: ${model.filename}`);
+          copiedCount++;
+        } catch (copyError) {
+          console.error(`❌ Failed to copy ${model.filename}:`, copyError);
+        }
+      }
+      
+      // Now scan the models folder for all available models
+      const allModelFiles = await fs.promises.readdir(modelsDir);
+      const models = [];
+      
+      for (const file of allModelFiles) {
+        if (!file.endsWith('.gguf')) continue;
+        
+        const fullPath = path.join(modelsDir, file);
+        const stats = await fs.promises.stat(fullPath);
+        
+        // Skip very small files
+        if (stats.size < 1024 * 1024) continue;
+        
+        const modelName = file
+          .replace(/\.gguf$/i, "")
+          .replace(/[-_]/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+        
+        models.push({
+          name: modelName,
+          filename: file,
+          path: fullPath,
+          size: stats.size,
+          format: "GGUF",
+          provider: "local-file"
+        });
+      }
+      
+      console.log(`📂 Total models in models folder: ${models.length}`);
+      
+      // Sync all models to database
+      for (const model of models) {
+        const existing = await storage.getModel(model.name);
         if (!existing) {
           await storage.createModel({
-            name: localModel.name,
-            filename: localModel.filename,  // Store actual filename for GPU Bridge
-            provider: localModel.provider,
+            name: model.name,
+            filename: model.filename,
+            provider: model.provider,
             isAvailable: true,
             parameters: {
-              path: localModel.path,
-              size: localModel.size,
-              format: localModel.format
+              path: model.path,
+              size: model.size,
+              format: model.format
             },
           });
-          console.log(`✅ Added: ${localModel.name}`);
+          console.log(`✅ Registered: ${model.name}`);
+        } else if (!existing.filename) {
+          // Update filename if missing
+          await storage.updateModel(existing.id, {
+            ...existing,
+            filename: model.filename,
+            parameters: {
+              ...existing.parameters,
+              path: model.path
+            }
+          });
+          console.log(`📝 Updated filename for: ${model.name}`);
         }
       }
       
       res.json({ 
         success: true, 
-        modelsFound: localModels.length,
-        message: "Models refreshed from Downloads folder"
+        modelsFound: downloadModels.length,
+        modelsCopied: copiedCount,
+        modelsSkipped: skippedCount,
+        totalModels: models.length,
+        message: `Found ${downloadModels.length} models in Downloads, copied ${copiedCount} new models, ${models.length} total available`
       });
     } catch (error) {
       console.error("❌ Refresh error:", error);
