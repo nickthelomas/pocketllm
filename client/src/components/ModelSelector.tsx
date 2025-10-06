@@ -1,52 +1,32 @@
-import { useState, useEffect } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Download, Loader2, RefreshCw, Wifi, WifiOff, Star, Link } from "lucide-react";
-import { queryClient } from "@/lib/queryClient";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import CloudModelPasswordDialog from "./CloudModelPasswordDialog";
+import { RefreshCw, Download, Star, Cloud, Server, Trash2, Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import CloudModelPasswordDialog from "@/components/CloudModelPasswordDialog";
-import DownloadsPanel from "@/components/DownloadsPanel";
-import type { Model } from "@shared/schema";
+import type { Model, Settings } from "@shared/schema";
+import { apiRequest } from "@/lib/queryClient";
 
 interface ModelSelectorProps {
-  selectedModel: string;
-  onModelChange: (model: string) => void;
-}
-
-interface CatalogModel {
-  name: string;
-  size: string;
-  description: string;
-  source: string;
-  provider: string;
-  downloadUrl?: string;
+  selectedModel: string | null;
+  onModelChange: (modelName: string | null) => void;
 }
 
 interface NetworkStatus {
   online: boolean;
-  openrouter: boolean;
-}
-
-interface Settings {
-  id: string;
-  key: string;
-  value: any;
+  openrouterAvailable: boolean;
+  remoteOllamaAvailable: boolean;
 }
 
 export default function ModelSelector({ selectedModel, onModelChange }: ModelSelectorProps) {
   const { toast } = useToast();
-  const [showCatalog, setShowCatalog] = useState(false);
-  const [pullError, setPullError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("local");
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [pendingModel, setPendingModel] = useState<string | null>(null);
-  const [customHfUrl, setCustomHfUrl] = useState("");
-  const [customModelName, setCustomModelName] = useState("");
+  const [showInstructions, setShowInstructions] = useState(false);
   const [favorites, setFavorites] = useState<string[]>(() => {
     const saved = localStorage.getItem("favoriteModels");
     return saved ? JSON.parse(saved) : [];
@@ -63,12 +43,6 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
 
   const { data: settings = [] } = useQuery<Settings[]>({
     queryKey: ["/api/settings"],
-  });
-
-  const { data: catalogData, isError: catalogError } = useQuery<{ catalog: CatalogModel[] }>({
-    queryKey: ["/api/models/catalog"],
-    enabled: showCatalog,
-    retry: false,
   });
 
   const isOnline = networkStatus?.online ?? true;
@@ -101,9 +75,6 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
       // Lower index = higher priority
       if (newPriority < existingPriority) {
         modelsByName.set(baseName, model);
-      } else if (newPriority === existingPriority && model.name === baseName) {
-        // Same provider, prefer exact name match (no version suffix)
-        modelsByName.set(baseName, model);
       }
     }
   }
@@ -111,85 +82,31 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
   const localModels = Array.from(modelsByName.values());
   const cloudModels = availableModels.filter(m => m.provider === 'openrouter');
   const remoteModels = availableModels.filter(m => m.provider === 'remote-ollama');
-  const favoriteModels = cloudModels.filter(m => favorites.includes(m.name));
+  
+  const favoriteModels = availableModels.filter(m => favorites.includes(m.name));
 
-  const catalogLocalModels = catalogData?.catalog?.filter(m => 
-    ['ollama', 'huggingface', 'local-file'].includes(m.provider)
-  ) || [];
-  const catalogCloudModels = catalogData?.catalog?.filter(m => m.provider === 'openrouter') || [];
-  const catalogRemoteModels = catalogData?.catalog?.filter(m => m.provider === 'remote-ollama') || [];
-
-  useEffect(() => {
-    if (!modelsLoading && availableModels.length > 0 && !selectedModel) {
-      const savedModel = localStorage.getItem("selectedModel");
-      
-      if (savedModel && availableModels.some(m => m.name === savedModel)) {
-        onModelChange(savedModel);
-      } else {
-        const sortedBySize = [...availableModels].sort((a, b) => {
-          const sizeA = (a.parameters as any)?.size || Infinity;
-          const sizeB = (b.parameters as any)?.size || Infinity;
-          return sizeA - sizeB;
-        });
-        
-        const smallestModel = sortedBySize[0];
-        if (smallestModel) {
-          onModelChange(smallestModel.name);
-          localStorage.setItem("selectedModel", smallestModel.name);
-        }
-      }
-    }
-  }, [modelsLoading, availableModels, selectedModel, onModelChange]);
-
-  useEffect(() => {
-    if (selectedModel) {
-      localStorage.setItem("selectedModel", selectedModel);
-      // Only load model if it's changed from the previous value
-      const previousModel = localStorage.getItem("previousModel");
-      if (selectedModel !== previousModel) {
-        localStorage.setItem("previousModel", selectedModel);
-        loadModelMutation.mutate(selectedModel);
-      }
-    }
-  }, [selectedModel]);
-
-  const loadModelMutation = useMutation({
-    mutationFn: async (modelName: string) => {
-      const response = await fetch("/api/models/load", {
+  const refreshModelsMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch("/api/models/refresh", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: modelName }),
       });
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to load model");
+        const error = await response.json();
+        throw new Error(error.error || "Failed to refresh models");
       }
       return response.json();
     },
-    onMutate: (modelName) => {
-      // Show loading toast when mutation starts
-      const model = availableModels.find(m => m.name === modelName);
-      if (model && ['ollama', 'huggingface', 'local-file'].includes(model.provider)) {
-        toast({
-          title: "Loading Model",
-          description: `Loading ${modelName}... This may take up to 60 seconds for larger models.`,
-        });
-      }
-    },
     onSuccess: (data) => {
-      console.log(`✅ ${data.message}`);
+      queryClient.invalidateQueries({ queryKey: ["/api/models"] });
       toast({
-        title: "Model Ready",
-        description: data.message,
+        title: "Models Refreshed",
+        description: data.message || `Found ${data.modelsFound} models in Downloads folder`,
       });
-      // Invalidate health status to show the loaded model
-      queryClient.invalidateQueries({ queryKey: ["/api/system/health"] });
     },
     onError: (error) => {
-      console.error("Model load failed:", error);
       toast({
-        title: "Model Load Failed",
-        description: error instanceof Error ? error.message : "Could not load model in Ollama",
+        title: "Refresh Failed",
+        description: error instanceof Error ? error.message : "Could not refresh models",
         variant: "destructive",
       });
     },
@@ -209,125 +126,88 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
       const modelCount = data.models?.length || 0;
       toast({
         title: "Models Synced",
-        description: `Found ${modelCount} local models from Ollama and GGUF directories.`,
+        description: `Found ${modelCount} models from Ollama and Downloads folder.`,
       });
     },
     onError: (error) => {
       toast({
         title: "Sync Failed",
-        description: error instanceof Error ? error.message : "Could not connect to Ollama or scan local directories",
+        description: error instanceof Error ? error.message : "Could not scan for models",
         variant: "destructive",
       });
     },
   });
 
-  const pullModelMutation = useMutation({
-    mutationFn: async ({ name, source, downloadUrl }: { name: string; source: string; downloadUrl?: string }) => {
-      const downloadId = `${name}-${Date.now()}`;
-      
-      // Emit initial download event
-      window.dispatchEvent(new CustomEvent('download-update', {
-        detail: { id: downloadId, name, status: 'downloading', progress: 0 }
-      }));
-
-      const response = await fetch("/api/models/pull", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, source, downloadUrl }),
+  const deleteModelMutation = useMutation({
+    mutationFn: async (modelName: string) => {
+      const response = await fetch(`/api/models/${encodeURIComponent(modelName)}`, {
+        method: "DELETE",
       });
-
-      if (response.status === 503) {
-        const error = await response.json();
-        window.dispatchEvent(new CustomEvent('download-update', {
-          detail: { id: downloadId, name, status: 'error', progress: 0, error: error.message }
-        }));
-        throw new Error(error.message || "Network unavailable");
-      }
-
       if (!response.ok) {
-        window.dispatchEvent(new CustomEvent('download-update', {
-          detail: { id: downloadId, name, status: 'error', progress: 0, error: 'Failed to start download' }
-        }));
-        throw new Error("Failed to start download");
+        const error = await response.json();
+        throw new Error(error.error || "Failed to hide/unhide model");
       }
-
-      // Read SSE progress stream
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      if (reader) {
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
-            buffer = lines.pop() || "";
-
-            for (const line of lines) {
-              if (!line.trim() || !line.startsWith("data: ")) continue;
-              
-              const data = line.slice(6);
-              if (data === "[DONE]") {
-                window.dispatchEvent(new CustomEvent('download-update', {
-                  detail: { id: downloadId, name, status: 'complete', progress: 100 }
-                }));
-                break;
-              }
-
-              try {
-                const parsed = JSON.parse(data);
-                if (parsed.status && parsed.progress !== undefined) {
-                  window.dispatchEvent(new CustomEvent('download-update', {
-                    detail: { 
-                      id: downloadId, 
-                      name, 
-                      status: parsed.status, 
-                      progress: Math.min(parsed.progress, 100) 
-                    }
-                  }));
-                }
-                if (parsed.error) {
-                  window.dispatchEvent(new CustomEvent('download-update', {
-                    detail: { id: downloadId, name, status: 'error', progress: 0, error: parsed.error }
-                  }));
-                  throw new Error(parsed.error);
-                }
-              } catch (e) {
-                // Skip invalid JSON
-              }
-            }
-          }
-        } catch (error) {
-          window.dispatchEvent(new CustomEvent('download-update', {
-            detail: { id: downloadId, name, status: 'error', progress: 0, error: 'Download interrupted' }
-          }));
-          throw error;
-        }
-      }
-
-      return { name, downloadId };
+      const data = await response.json();
+      return { ...data, modelName };
     },
     onSuccess: (data) => {
-      setShowCatalog(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/models"] });
       toast({
-        title: "Download Complete",
-        description: `${data.name} downloaded successfully. Syncing models...`,
-        duration: 3000,
+        title: data.action === "hidden" ? "Model Hidden" : "Model Unhidden",
+        description: data.message,
       });
-      setPullError(null);
-      // Auto-sync after download completes
-      setTimeout(() => syncModelsMutation.mutate(), 500);
+      
+      // If we hid the currently selected model, clear selection
+      if (selectedModel === data.modelName && data.action === "hidden") {
+        onModelChange(null);
+      }
     },
     onError: (error) => {
       toast({
-        title: "Download Failed",
-        description: error instanceof Error ? error.message : "Could not start download",
+        title: "Action Failed",
+        description: error instanceof Error ? error.message : "Could not hide/unhide model",
         variant: "destructive",
       });
-      setPullError(error instanceof Error ? error.message : "Could not download model");
+    },
+  });
+
+  const loadModelMutation = useMutation({
+    mutationFn: async (modelName: string) => {
+      const response = await fetch("/api/models/load", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: modelName }),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to load model");
+      }
+      return response.json();
+    },
+    onMutate: (modelName) => {
+      if (modelName.endsWith(".gguf")) {
+        toast({
+          title: "Loading Model",
+          description: `Loading ${modelName}... This may take up to 60 seconds for larger models.`,
+        });
+      }
+    },
+    onSuccess: (data) => {
+      console.log(`✅ ${data.message}`);
+      toast({
+        title: "Model Ready",
+        description: data.message,
+      });
+      // Invalidate health status to show the loaded model
+      queryClient.invalidateQueries({ queryKey: ["/api/system/health"] });
+    },
+    onError: (error) => {
+      console.error("Model load failed:", error);
+      toast({
+        title: "Model Load Failed",
+        description: error instanceof Error ? error.message : "Could not load model",
+        variant: "destructive",
+      });
     },
   });
 
@@ -344,8 +224,8 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
     const modelExists = availableModels.some(m => m.name === value);
     if (!modelExists) {
       toast({
-        title: "Model not found locally",
-        description: "Please sync or pull the model first.",
+        title: "Model not found",
+        description: "Please refresh models or check Downloads folder.",
         variant: "destructive",
       });
       return;
@@ -381,11 +261,18 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
     }
   };
 
-  const getTabContent = (tabModels: Model[], tabName: string, showFavoriteButton = false) => {
+  const getTabContent = (tabModels: Model[], tabName: string, showDeleteButton = false) => {
     if (tabModels.length === 0) {
       return (
         <div className="text-center py-8 text-sm text-muted-foreground" data-testid={`text-no-${tabName}-models`}>
-          No {tabName} models available. Click Pull to add models.
+          {tabName === "local" ? (
+            <div className="space-y-3">
+              <p>No local models found.</p>
+              <p className="text-xs">Download GGUF models to your Downloads folder and click Refresh.</p>
+            </div>
+          ) : (
+            `No ${tabName} models available.`
+          )}
         </div>
       );
     }
@@ -418,36 +305,64 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
                     )}
                   </>
                 )}
+                {model.provider === "local-file" && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-700 dark:text-green-300 border border-green-500/30 shrink-0">
+                    GGUF
+                  </span>
+                )}
               </div>
               {model.provider === "openrouter" && (model.parameters as any)?.pricing ? (
                 <p className="text-xs text-muted-foreground mt-0.5">
                   ${(parseFloat((model.parameters as any).pricing.prompt) * 1000000).toFixed(2)} / ${(parseFloat((model.parameters as any).pricing.completion) * 1000000).toFixed(2)} per 1M tokens
                 </p>
-              ) : (
-                <p className="text-xs text-muted-foreground mt-0.5 capitalize">{model.provider}</p>
-              )}
+              ) : model.provider === "local-file" && (model.parameters as any)?.size ? (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {((model.parameters as any).size / 1024 / 1024 / 1024).toFixed(1)} GB
+                </p>
+              ) : model.parameters && typeof model.parameters === 'object' && 'size' in model.parameters && model.parameters.size ? (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {typeof model.parameters.size === 'number' 
+                    ? `${(model.parameters.size / 1024 / 1024 / 1024).toFixed(1)} GB`
+                    : model.parameters.size}
+                </p>
+              ) : null}
             </div>
-            <div className="flex items-center gap-2">
-              {showFavoriteButton && (
+            <div className="flex items-center gap-1 ml-2 shrink-0">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 hover:bg-yellow-500/20"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleFavorite(model.name);
+                }}
+                data-testid={`button-favorite-${model.name}`}
+              >
+                <Star className={`w-4 h-4 ${favorites.includes(model.name) ? 'fill-yellow-500 text-yellow-500' : ''}`} />
+              </Button>
+              {showDeleteButton && model.provider === "local-file" && (
                 <Button
-                  size="sm"
                   variant="ghost"
-                  onClick={() => toggleFavorite(model.name)}
-                  data-testid={`button-favorite-${model.name}`}
-                  className="p-2"
+                  size="icon"
+                  className="h-7 w-7 hover:bg-destructive/20"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deleteModelMutation.mutate(model.name);
+                  }}
+                  disabled={deleteModelMutation.isPending}
+                  data-testid={`button-delete-${model.name}`}
                 >
-                  <Star 
-                    className={`w-4 h-4 ${favorites.includes(model.name) ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground"}`}
-                  />
+                  <Trash2 className="w-4 h-4 text-destructive" />
                 </Button>
               )}
               <Button
-                size="sm"
                 variant={selectedModel === model.name ? "default" : "outline"}
+                size="sm"
+                className="h-7 text-xs"
                 onClick={() => handleModelSelect(model.name)}
                 data-testid={`button-select-${model.name}`}
               >
-                {selectedModel === model.name ? "Active" : "Select"}
+                {selectedModel === model.name ? "Selected" : "Select"}
               </Button>
             </div>
           </div>
@@ -457,409 +372,106 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
   };
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-2">
-        <label className="block text-xs font-medium text-muted-foreground">
-          Active Model
-        </label>
-        <div className="flex items-center gap-1" data-testid="indicator-network-status">
-          {isOnline ? (
-            <Wifi className="w-3 h-3 text-green-600 dark:text-green-400" />
-          ) : (
-            <WifiOff className="w-3 h-3 text-destructive" />
-          )}
-          <span className="text-[10px] text-muted-foreground">
-            {isOnline ? "Online" : "Offline"}
-          </span>
+    <>
+      <div className="space-y-3" data-testid="model-selector">
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-semibold">Model Selection</h3>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowInstructions(true)}
+              className="h-8 text-xs"
+              data-testid="button-instructions"
+            >
+              <Info className="w-3.5 h-3.5 mr-1.5" />
+              How to Add Models
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refreshModelsMutation.mutate()}
+              disabled={refreshModelsMutation.isPending}
+              className="h-8 text-xs"
+              data-testid="button-refresh"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${refreshModelsMutation.isPending ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => syncModelsMutation.mutate()}
+              disabled={syncModelsMutation.isPending}
+              className="h-8 text-xs"
+              data-testid="button-sync"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${syncModelsMutation.isPending ? 'animate-spin' : ''}`} />
+              Sync All
+            </Button>
+          </div>
         </div>
-      </div>
 
-      <Select value={selectedModel} onValueChange={handleModelSelect} disabled={loadModelMutation.isPending} data-testid="select-model">
-        <SelectTrigger className="relative">
-          {loadModelMutation.isPending && (
-            <Loader2 className="absolute left-3 w-4 h-4 animate-spin text-muted-foreground" />
-          )}
-          <SelectValue 
-            placeholder={loadModelMutation.isPending ? "Loading model..." : "Select a model..."} 
-            className={loadModelMutation.isPending ? "ml-6" : ""}
-          />
-        </SelectTrigger>
-        <SelectContent>
-          {availableModels.length > 0 ? (
-            availableModels.map((model) => (
-              <SelectItem key={model.id} value={model.name}>
-                {model.name}
-              </SelectItem>
-            ))
-          ) : (
-            <div className="px-2 py-1.5 text-sm text-muted-foreground">
-              No models available. Click Sync or Pull to add models.
-            </div>
-          )}
-        </SelectContent>
-      </Select>
-      
-      <div className="flex gap-2 mt-3">
-        <Button 
-          variant="outline" 
-          size="sm" 
-          className="flex-1"
-          onClick={() => setShowCatalog(true)}
-          data-testid="button-pull-model"
-        >
-          <Download className="w-4 h-4 mr-2" />
-          Pull
-        </Button>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          className="flex-1"
-          onClick={() => syncModelsMutation.mutate()}
-          disabled={syncModelsMutation.isPending}
-          data-testid="button-sync-models"
-        >
-          <RefreshCw className="w-4 h-4 mr-2" />
-          Sync
-        </Button>
-      </div>
-
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4" data-testid="tabs-provider">
-        <TabsList className="inline-flex w-auto min-w-full overflow-x-auto">
-          <TabsTrigger value="local" data-testid="tab-local" className="flex-shrink-0">
-            Local
-          </TabsTrigger>
-          <TabsTrigger 
-            value="cloud" 
-            data-testid="tab-cloud"
-            className="flex-shrink-0"
-          >
-            Cloud
-          </TabsTrigger>
-          <TabsTrigger 
-            value="favourites" 
-            data-testid="tab-favourites"
-            className="flex-shrink-0"
-          >
-            Favourites
-          </TabsTrigger>
-          <TabsTrigger 
-            value="remote" 
-            data-testid="tab-remote"
-            className="flex-shrink-0"
-          >
-            Remote
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="local" className="mt-3">
-          <Tabs defaultValue="models" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 mb-3">
-              <TabsTrigger value="models" data-testid="tab-local-models">
-                Models
+        {modelsLoading ? (
+          <div className="text-center py-8 text-sm text-muted-foreground">
+            Loading models...
+          </div>
+        ) : (
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="local" className="text-xs flex items-center gap-1">
+                <Server className="w-3 h-3" />
+                Local ({localModels.length})
               </TabsTrigger>
-              <TabsTrigger value="downloads" data-testid="tab-local-downloads">
-                Downloads
+              <TabsTrigger value="cloud" className="text-xs flex items-center gap-1" disabled={!isOnline || !hasOpenRouterKey}>
+                <Cloud className="w-3 h-3" />
+                Cloud ({cloudModels.length})
+              </TabsTrigger>
+              <TabsTrigger value="favorites" className="text-xs flex items-center gap-1">
+                <Star className="w-3 h-3" />
+                Favs ({favoriteModels.length})
+              </TabsTrigger>
+              <TabsTrigger value="remote" className="text-xs flex items-center gap-1" disabled={!hasRemoteUrl}>
+                <Server className="w-3 h-3" />
+                Remote ({remoteModels.length})
               </TabsTrigger>
             </TabsList>
-            
-            <TabsContent value="models" className="mt-0" data-testid="content-local-models">
-              {getTabContent(localModels, "local")}
+
+            <TabsContent value="local" className="mt-3">
+              {getTabContent(localModels, "local", true)}
             </TabsContent>
-            
-            <TabsContent value="downloads" className="mt-0" data-testid="content-local-downloads">
-              <div className="max-h-[400px] overflow-y-auto">
-                <DownloadsPanel />
-              </div>
+
+            <TabsContent value="cloud" className="mt-3">
+              {!hasOpenRouterKey ? (
+                <div className="text-center py-8 text-sm text-muted-foreground">
+                  OpenRouter API key required. Add it in Settings.
+                </div>
+              ) : !isOnline ? (
+                <div className="text-center py-8 text-sm text-muted-foreground">
+                  No internet connection. Cloud models unavailable.
+                </div>
+              ) : (
+                getTabContent(cloudModels, "cloud")
+              )}
+            </TabsContent>
+
+            <TabsContent value="favorites" className="mt-3">
+              {getTabContent(favoriteModels, "favorites", favoriteModels.some(m => m.provider === "local-file"))}
+            </TabsContent>
+
+            <TabsContent value="remote" className="mt-3">
+              {!hasRemoteUrl ? (
+                <div className="text-center py-8 text-sm text-muted-foreground">
+                  Configure Remote Ollama URL in Settings to use remote models.
+                </div>
+              ) : (
+                getTabContent(remoteModels, "remote")
+              )}
             </TabsContent>
           </Tabs>
-        </TabsContent>
+        )}
+      </div>
 
-        <TabsContent value="cloud" className="mt-3">
-          {!hasOpenRouterKey ? (
-            <div className="text-center py-8 text-sm text-muted-foreground" data-testid="text-configure-openrouter">
-              Configure OpenRouter API key in Settings to use cloud models.
-            </div>
-          ) : !isOnline ? (
-            <div className="text-center py-8 text-sm text-muted-foreground" data-testid="text-cloud-offline">
-              Network offline. Cloud models require internet connectivity.
-            </div>
-          ) : (
-            getTabContent(cloudModels, "cloud", true)
-          )}
-        </TabsContent>
-
-        <TabsContent value="favourites" className="mt-3">
-          {!hasOpenRouterKey ? (
-            <div className="text-center py-8 text-sm text-muted-foreground" data-testid="text-configure-openrouter-favourites">
-              Configure OpenRouter API key in Settings to use cloud models.
-            </div>
-          ) : !isOnline ? (
-            <div className="text-center py-8 text-sm text-muted-foreground" data-testid="text-favourites-offline">
-              Network offline. Cloud models require internet connectivity.
-            </div>
-          ) : favoriteModels.length === 0 ? (
-            <div className="text-center py-8 text-sm text-muted-foreground" data-testid="text-no-favourites">
-              No favourites yet. Star your favorite cloud models from the Cloud tab.
-            </div>
-          ) : (
-            getTabContent(favoriteModels, "favourites", true)
-          )}
-        </TabsContent>
-
-        <TabsContent value="remote" className="mt-3">
-          {!hasRemoteUrl ? (
-            <div className="text-center py-8 text-sm text-muted-foreground" data-testid="text-configure-remote">
-              Configure Remote Ollama URL in Settings to use remote models.
-            </div>
-          ) : (
-            getTabContent(remoteModels, "remote")
-          )}
-        </TabsContent>
-      </Tabs>
-
-      <Dialog open={showCatalog} onOpenChange={(open) => {
-        setShowCatalog(open);
-        if (!open) {
-          setPullError(null);
-        }
-      }}>
-        <DialogContent className="max-w-md max-h-[90vh] flex flex-col" data-testid="dialog-pull-catalog">
-          <DialogHeader className="shrink-0">
-            <DialogTitle>
-              {pullError ? "Download Failed" : "Pull Model"}
-            </DialogTitle>
-          </DialogHeader>
-
-          {catalogError ? (
-            <div className="space-y-4">
-              <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
-                <p className="text-sm text-destructive font-medium">Network unavailable</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Ollama is not running or network is down. Start Ollama to pull models.
-                </p>
-              </div>
-              <Button 
-                variant="outline" 
-                className="w-full" 
-                onClick={() => setShowCatalog(false)}
-                data-testid="button-close-catalog"
-              >
-                Close
-              </Button>
-            </div>
-          ) : pullError ? (
-            <div className="space-y-4">
-              <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
-                <p className="text-sm text-destructive font-medium">Pull Failed</p>
-                <p className="text-xs text-muted-foreground mt-1">{pullError}</p>
-              </div>
-              <Button 
-                variant="outline" 
-                className="w-full" 
-                onClick={() => {
-                  setPullError(null);
-                }}
-                data-testid="button-try-again"
-              >
-                Try Again
-              </Button>
-            </div>
-          ) : (
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col" data-testid="tabs-pull-catalog">
-              <TabsList className="grid w-full grid-cols-3 shrink-0">
-                <TabsTrigger value="local" data-testid="tab-pull-local">
-                  Local
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="cloud" 
-                  disabled={!isOnline || !hasOpenRouterKey}
-                  className="disabled:opacity-50"
-                  data-testid="tab-pull-cloud"
-                >
-                  Cloud
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="remote" 
-                  disabled={!hasRemoteUrl}
-                  className="disabled:opacity-50"
-                  data-testid="tab-pull-remote"
-                >
-                  Remote
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="local" className="flex-1 mt-3">
-                <div className="max-h-[50vh] overflow-y-auto pr-2">
-                  <div className="space-y-3">
-                    {/* Custom HuggingFace URL Input */}
-                    <div className="p-3 border border-border rounded-lg bg-muted/30">
-                      <div className="flex items-center gap-2 mb-3">
-                        <Link className="w-4 h-4 text-primary" />
-                        <h4 className="text-sm font-medium">Custom HuggingFace Model</h4>
-                      </div>
-                      <div className="space-y-3">
-                        <div>
-                          <Label htmlFor="custom-model-name" className="text-xs">Model Name</Label>
-                          <Input
-                            id="custom-model-name"
-                            type="text"
-                            placeholder="e.g., my-custom-model"
-                            value={customModelName}
-                            onChange={(e) => setCustomModelName(e.target.value)}
-                            className="h-8 text-xs"
-                            data-testid="input-custom-model-name"
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="custom-hf-url" className="text-xs">HuggingFace GGUF URL</Label>
-                          <Input
-                            id="custom-hf-url"
-                            type="url"
-                            placeholder="https://huggingface.co/.../model.gguf"
-                            value={customHfUrl}
-                            onChange={(e) => setCustomHfUrl(e.target.value)}
-                            className="h-8 text-xs"
-                            data-testid="input-custom-hf-url"
-                          />
-                          <p className="text-[10px] text-muted-foreground mt-1">
-                            Direct URL to a GGUF file on HuggingFace (must be HTTPS)
-                          </p>
-                        </div>
-                        <Button
-                          size="sm"
-                          className="w-full"
-                          onClick={() => {
-                            if (!customModelName.trim()) {
-                              toast({
-                                title: "Model name required",
-                                description: "Please enter a name for the custom model",
-                                variant: "destructive"
-                              });
-                              return;
-                            }
-                            if (!customHfUrl.trim() || !customHfUrl.startsWith("https://huggingface.co/")) {
-                              toast({
-                                title: "Invalid URL",
-                                description: "URL must be from huggingface.co and use HTTPS",
-                                variant: "destructive"
-                              });
-                              return;
-                            }
-                            pullModelMutation.mutate({
-                              name: customModelName.trim(),
-                              source: "huggingface",
-                              downloadUrl: customHfUrl.trim()
-                            });
-                            setCustomModelName("");
-                            setCustomHfUrl("");
-                          }}
-                          disabled={pullModelMutation.isPending || !customModelName.trim() || !customHfUrl.trim()}
-                          data-testid="button-pull-custom"
-                        >
-                          <Download className="w-3 h-3 mr-1.5" />
-                          Download Custom Model
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="border-t border-border pt-3">
-                      <p className="text-sm text-muted-foreground mb-3">
-                        📱 Curated Mobile Models
-                      </p>
-                      
-                      {catalogLocalModels.map((model: CatalogModel) => (
-                        <div 
-                          key={model.name}
-                          className="flex items-center justify-between p-3 border border-border rounded-lg hover:bg-accent/50 transition-colors mb-2"
-                        >
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <h4 className="text-sm font-medium truncate">{model.name}</h4>
-                              {model.provider === "huggingface" && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-700 dark:text-orange-300 border border-orange-500/30 shrink-0">
-                                  HF
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{model.description}</p>
-                          </div>
-                          <div className="flex items-center gap-3 shrink-0 ml-3">
-                            <span className="text-xs font-mono text-muted-foreground">{model.size}</span>
-                            <Button
-                              size="sm"
-                              onClick={() => pullModelMutation.mutate({ name: model.name, source: model.source, downloadUrl: model.downloadUrl })}
-                              disabled={pullModelMutation.isPending}
-                              data-testid={`button-pull-${model.name}`}
-                            >
-                              Pull
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="cloud" className="flex-1 mt-3">
-                <div className="max-h-[50vh] overflow-y-auto pr-2">
-                  <div className="space-y-3">
-                    <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                      <p className="text-sm font-medium text-blue-700 dark:text-blue-300 mb-2">☁️ Cloud Models Ready</p>
-                      <p className="text-xs text-muted-foreground">
-                        OpenRouter models are instantly available - no download needed! Click <span className="font-semibold">Sync</span> to load them, then select from the Cloud tab on the main screen.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="remote" className="flex-1 mt-3">
-                <div className="max-h-[50vh] overflow-y-auto pr-2">
-                {!hasRemoteUrl ? (
-                  <div className="p-4 bg-muted/50 border border-border rounded-lg">
-                    <p className="text-sm text-muted-foreground">
-                      Configure Remote Ollama URL in Settings to pull remote models.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <p className="text-sm text-muted-foreground">
-                      Select a remote model to download:
-                    </p>
-                    
-                    {catalogRemoteModels.map((model: CatalogModel) => (
-                      <div 
-                        key={model.name}
-                        className="flex items-center justify-between p-3 border border-border rounded-lg hover:bg-accent/50 transition-colors"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <h4 className="text-sm font-medium truncate">{model.name}</h4>
-                          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{model.description}</p>
-                        </div>
-                        <div className="flex items-center gap-3 shrink-0 ml-3">
-                          <span className="text-xs font-mono text-muted-foreground">{model.size}</span>
-                          <Button
-                            size="sm"
-                            onClick={() => pullModelMutation.mutate({ name: model.name, source: model.source, downloadUrl: model.downloadUrl })}
-                            disabled={pullModelMutation.isPending}
-                            data-testid={`button-pull-${model.name}`}
-                          >
-                            Pull
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                </div>
-              </TabsContent>
-            </Tabs>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Password Protection Dialog */}
       <CloudModelPasswordDialog
         isOpen={showPasswordDialog}
         onClose={() => {
@@ -869,11 +481,71 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
         onSuccess={() => {
           if (pendingModel) {
             onModelChange(pendingModel);
-            setPendingModel(null);
           }
+          setShowPasswordDialog(false);
+          setPendingModel(null);
         }}
-        modelName={pendingModel || ""}
       />
-    </div>
+
+      <Dialog open={showInstructions} onOpenChange={setShowInstructions}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Download className="w-5 h-5" />
+              How to Add Models
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <DialogDescription>
+              PocketLLM uses GGUF models that you download directly to your phone's Downloads folder.
+            </DialogDescription>
+            
+            <div className="border rounded-lg p-4 bg-muted/50">
+              <h4 className="font-semibold text-sm mb-2">Step 1: Download a Model</h4>
+              <p className="text-sm text-muted-foreground mb-3">
+                Use your browser to download GGUF models from:
+              </p>
+              <ul className="space-y-1 text-sm text-muted-foreground ml-4">
+                <li>• HuggingFace (search for ".gguf" files)</li>
+                <li>• TheBloke's models (quantized versions)</li>
+                <li>• Any direct GGUF download link</li>
+              </ul>
+            </div>
+
+            <div className="border rounded-lg p-4 bg-muted/50">
+              <h4 className="font-semibold text-sm mb-2">Step 2: Model Goes to Downloads</h4>
+              <p className="text-sm text-muted-foreground">
+                Your browser will save the model to your Downloads folder automatically.
+                No need to move it - PocketLLM scans Downloads directly.
+              </p>
+            </div>
+
+            <div className="border rounded-lg p-4 bg-muted/50">
+              <h4 className="font-semibold text-sm mb-2">Step 3: Refresh Models</h4>
+              <p className="text-sm text-muted-foreground">
+                Click the "Refresh" button above to scan for new models.
+                They'll appear in the Local tab ready to use.
+              </p>
+            </div>
+
+            <div className="border-t pt-4">
+              <h4 className="font-semibold text-sm mb-2">Recommended Models</h4>
+              <ul className="space-y-1 text-sm text-muted-foreground">
+                <li>• <strong>Phi-3.5-mini:</strong> 3.8B params, great for mobile</li>
+                <li>• <strong>Qwen2.5:</strong> Various sizes, excellent performance</li>
+                <li>• <strong>Llama 3.2:</strong> 1B or 3B versions for mobile</li>
+                <li>• <strong>Gemma 2:</strong> 2B version, efficient on device</li>
+              </ul>
+            </div>
+
+            <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3">
+              <p className="text-xs text-yellow-700 dark:text-yellow-300">
+                <strong>Note:</strong> Choose Q4_K_M or Q5_K_M quantization for best balance of quality and performance on mobile.
+              </p>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
