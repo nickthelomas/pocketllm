@@ -6,7 +6,6 @@ import multer from "multer";
 import { z } from "zod";
 import { ollamaService } from "./services/ollama";
 import { modelDirectoryScanner } from "./services/modelDirectory";
-import { downloadManager } from "./services/downloadManager";
 import { createMemoryManager } from "./services/memoryManager";
 import { contextBuilder } from "./services/contextBuilder";
 import { promises as fs } from "fs";
@@ -674,17 +673,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: "Failed to fetch models" });
     }
   });
-  
-  // Get download status
-  app.get("/api/models/downloads", async (req, res) => {
-    try {
-      const downloads = downloadManager.getDownloads();
-      const stats = downloadManager.getStats();
-      res.json({ downloads, stats });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch download status" });
-    }
-  });
 
   app.get("/api/models/sync", async (req, res) => {
     try {
@@ -959,318 +947,103 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/models/pull", async (req, res) => {
+  // Add refresh endpoint to rescan models from Downloads folder
+  app.post("/api/models/refresh", async (req, res) => {
     try {
-      const { name, source = "ollama", downloadUrl } = req.body;
-      if (!name) {
-        return res.status(400).json({ error: "Model name is required" });
-      }
-
-      console.log(`📥 Pull request for model: ${name} (source: ${source})`);
-
-      // Set up SSE for pull progress
-      res.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-      });
-
-      const ollama = await getOllamaService();
-      const ollamaAvailable = await ollama.isAvailable();
-
-      // For HuggingFace downloads, go directly to local-file mode (GPU bridge compatible)
-      if (source === "huggingface") {
-        if (!downloadUrl) {
-          res.write(`data: ${JSON.stringify({ 
-            error: "Download URL is required for HuggingFace models" 
-          })}\n\n`);
-          res.end();
-          return;
-        }
-
-        // Validate downloadUrl is from HuggingFace (HTTPS only)
-        try {
-          const url = new URL(downloadUrl);
-          const hostname = url.hostname.toLowerCase();
-          
-          // Only allow HTTPS
-          if (url.protocol !== 'https:') {
-            throw new Error('Only HTTPS downloads are allowed');
-          }
-          
-          // Only allow huggingface.co and *.huggingface.co subdomains
-          const isValidHF = hostname === 'huggingface.co' || hostname.endsWith('.huggingface.co');
-          if (!isValidHF) {
-            throw new Error('Invalid download source');
-          }
-        } catch (error) {
-          res.write(`data: ${JSON.stringify({ 
-            error: error instanceof Error ? error.message : "Download URL must be HTTPS from huggingface.co" 
-          })}\n\n`);
-          res.end();
-          return;
-        }
-
-        console.log(`🤗 HuggingFace GGUF download: ${name}`);
-        console.log(`📥 Downloading from: ${downloadUrl}`);
-
-        try {
-          // Determine models directory (Termux or local)
-          const modelsDir = process.env.HOME 
-            ? path.join(process.env.HOME, 'PocketLLM', 'models')
-            : path.join(process.cwd(), 'models');
-          
-          await fs.mkdir(modelsDir, { recursive: true });
-          
-          // Sanitize filename from URL
-          const urlFilename = downloadUrl.split('/').pop() || 'model.gguf';
-          const safeFilename = urlFilename.replace(/[^a-zA-Z0-9._-]/g, '-');
-          const targetPath = path.join(modelsDir, safeFilename);
-          
-          // Check if already exists
-          try {
-            await fs.access(targetPath);
-            console.log(`ℹ️  Model already exists at: ${targetPath}`);
-            res.write(`data: ${JSON.stringify({ progress: 100, status: 'already exists' })}\n\n`);
-            
-            // Ensure it's in database
-            const modelName = safeFilename.replace('.gguf', '');
-            const existingModels = await storage.getModels();
-            const modelExists = existingModels.some(m => m.name === modelName);
-            
-            if (!modelExists) {
-              console.log(`➕ Adding existing model to database: ${modelName}`);
-              await storage.createModel({
-                name: modelName,
-                provider: "local-file",
-                isAvailable: true,
-                parameters: { 
-                  source: "huggingface",
-                  path: targetPath 
-                },
-              });
-            }
-            
-            res.write(`data: [DONE]\n\n`);
-            res.end();
-            return;
-          } catch {
-            // File doesn't exist, proceed with download
-          }
-          
-          // Add download to manager
-          const downloadId = await downloadManager.addDownload({
-            name,
-            source: 'huggingface',
-            downloadUrl,
-            targetPath
-          });
-          
-          // Download GGUF file with progress tracking via manager
-          res.write(`data: ${JSON.stringify({ progress: 0, status: 'downloading GGUF', downloadId })}\n\n`);
-          
-          try {
-            await downloadManager.downloadFile(
-              downloadUrl,
-              targetPath,
-              (progress, downloaded, total) => {
-                downloadManager.updateProgress(downloadId, progress, 
-                  `downloading ${(downloaded / 1024 / 1024).toFixed(1)}MB / ${(total / 1024 / 1024).toFixed(1)}MB`,
-                  { downloadedSize: downloaded, totalSize: total }
-                );
-                
-                res.write(`data: ${JSON.stringify({ 
-                  progress: Math.round(progress), 
-                  status: `downloading ${(downloaded / 1024 / 1024).toFixed(1)}MB / ${(total / 1024 / 1024).toFixed(1)}MB`,
-                  downloadId
-                })}\n\n`);
-              }
-            );
-            
-            downloadManager.completeDownload(downloadId, targetPath);
-          } catch (error) {
-            downloadManager.failDownload(downloadId, error instanceof Error ? error.message : String(error));
-            throw error;
-          }
-          
-          // Add to database as local-file (GPU bridge compatible)
-          const modelName = safeFilename.replace('.gguf', '');
-          const existingModels = await storage.getModels();
-          const modelExists = existingModels.some(m => m.name === modelName);
-          
-          if (!modelExists) {
-            console.log(`➕ Adding model to database: ${modelName}`);
-            await storage.createModel({
-              name: modelName,
-              provider: "local-file",
-              isAvailable: true,
-              parameters: { 
-                source: "huggingface",
-                path: targetPath 
-              },
-            });
-          }
-          
-          res.write(`data: ${JSON.stringify({ progress: 100, status: 'ready for use' })}\n\n`);
-          res.write(`data: [DONE]\n\n`);
-          res.end();
-          return;
-        } catch (error) {
-          console.error(`❌ HuggingFace import error:`, error);
-          res.write(`data: ${JSON.stringify({ 
-            error: error instanceof Error ? error.message : String(error) 
-          })}\n\n`);
-          res.end();
-          return;
-        }
-      }
-
-      // Ollama registry pull (default) - requires Ollama to be running
-      if (!ollamaAvailable) {
-        console.log(`❌ Ollama not available for registry pull`);
-        res.write(`data: ${JSON.stringify({ 
-          error: "Ollama not running. For GPU bridge mode, download models from HuggingFace catalog instead." 
-        })}\n\n`);
-        res.end();
-        return;
-      }
+      console.log("🔄 Refreshing models from Downloads folder...");
       
-      console.log(`🔄 Starting Ollama pull for: ${name}`);
+      // Scan for GGUF files in Downloads
+      const localModels = await modelDirectoryScanner.scanModels();
+      console.log(`📁 Found ${localModels.length} GGUF models in Downloads`);
       
-      try {
-        let progressReceived = false;
-        
-        await ollama.pullModel(name, (progress, status) => {
-          progressReceived = true;
-          console.log(`📊 Pull progress: ${progress.toFixed(1)}% - ${status}`);
-          res.write(`data: ${JSON.stringify({ progress, status })}\n\n`);
-        });
-
-        console.log(`✅ Pull completed. Progress updates received: ${progressReceived}`);
-
-        // Verify model exists in Ollama before marking as available
-        const ollamaModels = await ollama.listModels();
-        console.log(`🔍 Ollama has ${ollamaModels.length} models:`, ollamaModels.map(m => m.name));
-        
-        const modelInOllama = ollamaModels.some(m => m.name === name);
-        console.log(`✓ Model "${name}" in Ollama: ${modelInOllama}`);
-        
-        if (!modelInOllama) {
-          throw new Error("Model pull completed but model not found in Ollama. Try syncing models.");
-        }
-
-        // Only add model to storage AFTER successful pull and verification
-        const existingModels = await storage.getModels();
-        const modelExists = existingModels.some(m => m.name === name);
-        
-        if (!modelExists) {
-          console.log(`➕ Adding model to database: ${name}`);
+      // Sync to database
+      for (const localModel of localModels) {
+        const existing = await storage.getModel(localModel.name);
+        if (!existing) {
           await storage.createModel({
-            name,
-            provider: "ollama",
+            name: localModel.name,
+            provider: localModel.provider,
             isAvailable: true,
-            parameters: null,
+            parameters: {
+              path: localModel.path,
+              size: localModel.size,
+              format: localModel.format
+            },
           });
-        } else {
-          console.log(`ℹ️  Model already in database: ${name}`);
-        }
-
-        res.write(`data: [DONE]\n\n`);
-        res.end();
-      } catch (pullError) {
-        // If pull fails and we have a HuggingFace mapping, download GGUF directly
-        console.log(`⚠️  Ollama pull failed: ${pullError instanceof Error ? pullError.message : String(pullError)}`);
-        
-        const ggufMapping = getHuggingFaceGGUF(name);
-        if (ggufMapping) {
-          console.log(`🔄 Attempting direct GGUF download for GPU bridge...`);
-          
-          try {
-            // Determine models directory (Termux or local)
-            const modelsDir = process.env.HOME 
-              ? path.join(process.env.HOME, 'PocketLLM', 'models')
-              : path.join(process.cwd(), 'models');
-            
-            await fs.mkdir(modelsDir, { recursive: true });
-            
-            const targetPath = path.join(modelsDir, ggufMapping.filename);
-            
-            // Check if already exists
-            try {
-              await fs.access(targetPath);
-              console.log(`ℹ️  Model already exists at: ${targetPath}`);
-              res.write(`data: ${JSON.stringify({ progress: 100, status: 'already exists' })}\n\n`);
-            } catch {
-              // Download the GGUF file
-              console.log(`📥 Downloading from: ${ggufMapping.url}`);
-              res.write(`data: ${JSON.stringify({ progress: 0, status: 'downloading GGUF' })}\n\n`);
-              
-              const response = await fetch(ggufMapping.url);
-              if (!response.ok) {
-                throw new Error(`Download failed: ${response.statusText}`);
-              }
-              
-              const totalSize = parseInt(response.headers.get('content-length') || '0');
-              let downloadedSize = 0;
-              
-              const fileHandle = await fs.open(targetPath, 'w');
-              const reader = response.body?.getReader();
-              
-              if (!reader) throw new Error('No response body');
-              
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                
-                await fileHandle.write(value);
-                downloadedSize += value.length;
-                const progress = totalSize > 0 ? (downloadedSize / totalSize) * 100 : 0;
-                
-                res.write(`data: ${JSON.stringify({ 
-                  progress: Math.round(progress), 
-                  status: `downloading ${(downloadedSize / 1024 / 1024).toFixed(1)}MB / ${(totalSize / 1024 / 1024).toFixed(1)}MB` 
-                })}\n\n`);
-              }
-              
-              await fileHandle.close();
-              console.log(`✅ Download complete: ${targetPath}`);
-            }
-            
-            // Add to database
-            const existingModels = await storage.getModels();
-            const modelName = ggufMapping.filename.replace('.gguf', '');
-            const modelExists = existingModels.some(m => m.name === modelName);
-            
-            if (!modelExists) {
-              console.log(`➕ Adding model to database: ${modelName}`);
-              await storage.createModel({
-                name: modelName,
-                provider: "local-file",
-                isAvailable: true,
-                parameters: { 
-                  source: "huggingface-auto",
-                  path: targetPath 
-                },
-              });
-            }
-            
-            res.write(`data: [DONE]\n\n`);
-            res.end();
-          } catch (downloadError) {
-            console.error(`❌ Direct download failed:`, downloadError);
-            throw downloadError;
-          }
-        } else {
-          // No mapping available, re-throw original error
-          throw pullError;
+          console.log(`✅ Added: ${localModel.name}`);
         }
       }
+      
+      res.json({ 
+        success: true, 
+        modelsFound: localModels.length,
+        message: "Models refreshed from Downloads folder"
+      });
     } catch (error) {
-      console.error(`❌ Pull error:`, error);
-      res.write(`data: ${JSON.stringify({ error: error instanceof Error ? error.message : String(error) })}\n\n`);
-      res.end();
+      console.error("❌ Refresh error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to refresh models" 
+      });
     }
   });
+  
+  // Hide/unhide model endpoint (doesn't delete file)
+  app.delete("/api/models/:name", async (req, res) => {
+    try {
+      const modelName = decodeURIComponent(req.params.name);
+      console.log(`🗑️ Hiding model: ${modelName}`);
+      
+      // Find the model to get its filename
+      const models = await modelDirectoryScanner.scanModels();
+      const hiddenModels = await modelDirectoryScanner.getHiddenModels();
+      
+      // Check if this is a currently visible model
+      const visibleModel = models.find(m => m.name === modelName);
+      if (visibleModel) {
+        // Hide it
+        const filename = path.basename(visibleModel.path);
+        await modelDirectoryScanner.hideModel(filename);
+        
+        // Remove from database
+        const dbModel = await storage.getModel(modelName);
+        if (dbModel) {
+          await storage.deleteModel(dbModel.id);
+        }
+        
+        return res.json({ 
+          success: true, 
+          action: "hidden",
+          message: `Model ${modelName} has been hidden` 
+        });
+      }
+      
+      // Check if it's already hidden (for unhide functionality)
+      const modelsDir = modelDirectoryScanner.getModelsDir();
+      const allFiles = await fs.readdir(modelsDir);
+      const hiddenFile = allFiles.find(file => {
+        const name = file.replace(/\.gguf$/i, "").replace(/[-_]/g, " ").trim();
+        return name === modelName && hiddenModels.includes(file);
+      });
+      
+      if (hiddenFile) {
+        // Unhide it
+        await modelDirectoryScanner.unhideModel(hiddenFile);
+        return res.json({ 
+          success: true, 
+          action: "unhidden",
+          message: `Model ${modelName} has been unhidden. Run refresh to see it.` 
+        });
+      }
+      
+      res.status(404).json({ error: "Model not found" });
+    } catch (error) {
+      console.error("❌ Delete/hide error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to hide model" 
+      });
+    }
+  });
+
 
   app.post("/api/models/load", async (req, res) => {
     const { name } = req.body ?? {};

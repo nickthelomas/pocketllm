@@ -1,8 +1,9 @@
-// Model Directory Scanner - Discovers GGUF files in local filesystem
-// Allows users to load models from ./models folder for offline use
+// Model Directory Scanner - Discovers GGUF files in Downloads folder
+// Allows users to load models downloaded via browser for offline use
 
 import { promises as fs } from "fs";
 import path from "path";
+import os from "os";
 
 interface LocalModel {
   name: string;
@@ -12,42 +13,126 @@ interface LocalModel {
   provider: "local-file";
 }
 
+interface ModelManifest {
+  hiddenModels: string[];  // List of model filenames that are hidden
+  lastScanTime?: number;
+}
+
 export class ModelDirectoryScanner {
   private modelsDir: string;
+  private manifestPath: string;
+  private manifest: ModelManifest = { hiddenModels: [] };
 
-  constructor(modelsDir: string = "./models") {
-    this.modelsDir = path.resolve(modelsDir);
+  constructor() {
+    // In Termux, use the Downloads folder via storage symlink
+    const homeDir = os.homedir();
+    const termuxDownloads = path.join(homeDir, 'storage', 'downloads');
+    const fallbackModels = path.resolve('./models');
+    
+    // Store manifest in app data directory
+    const appDataDir = path.join(homeDir, '.pocketllm');
+    this.manifestPath = path.join(appDataDir, 'model-manifest.json');
+    
+    // Default to Downloads folder, will verify in init
+    this.modelsDir = termuxDownloads;
+    
+    // Initialize manifest directory
+    this.ensureManifestDirectory(appDataDir);
+  }
+  
+  private async ensureManifestDirectory(dir: string): Promise<void> {
+    try {
+      await fs.mkdir(dir, { recursive: true });
+    } catch (error) {
+      // Directory might already exist, that's fine
+    }
+  }
+  
+  private async loadManifest(): Promise<void> {
+    try {
+      const data = await fs.readFile(this.manifestPath, 'utf-8');
+      this.manifest = JSON.parse(data);
+    } catch (error) {
+      // File doesn't exist or is invalid, use default
+      this.manifest = { hiddenModels: [] };
+    }
+  }
+  
+  private async saveManifest(): Promise<void> {
+    try {
+      this.manifest.lastScanTime = Date.now();
+      await fs.writeFile(this.manifestPath, JSON.stringify(this.manifest, null, 2));
+    } catch (error) {
+      console.error("Failed to save manifest:", error);
+    }
   }
 
-  async ensureModelsDirectory(): Promise<void> {
+  async ensureModelsDirectory(): Promise<boolean> {
     try {
-      await fs.mkdir(this.modelsDir, { recursive: true });
+      // Check if Downloads folder is accessible
+      await fs.access(this.modelsDir);
+      console.log(`✓ Scanning models from: ${this.modelsDir}`);
+      return true;
     } catch (error) {
-      console.error("Failed to create models directory:", error);
+      // Try fallback directory
+      const fallbackDir = path.resolve('./models');
+      try {
+        await fs.mkdir(fallbackDir, { recursive: true });
+        this.modelsDir = fallbackDir;
+        console.log(`⚠️  Using fallback models directory: ${this.modelsDir}`);
+        console.log(`   Run 'termux-setup-storage' to enable Downloads folder access`);
+        return true;
+      } catch (fallbackError) {
+        console.error("Failed to access models directory:", error);
+        return false;
+      }
     }
   }
 
   async scanModels(): Promise<LocalModel[]> {
     try {
-      await this.ensureModelsDirectory();
+      // Load manifest to get hidden models
+      await this.loadManifest();
+      
+      // Ensure directory is accessible
+      const dirExists = await this.ensureModelsDirectory();
+      if (!dirExists) return [];
+      
       const files = await fs.readdir(this.modelsDir);
       const models: LocalModel[] = [];
 
       for (const file of files) {
+        // Skip hidden models
+        if (this.manifest.hiddenModels.includes(file)) {
+          continue;
+        }
+        
+        // Only look for GGUF files (GPU bridge compatible)
         if (this.isModelFile(file)) {
           const fullPath = path.join(this.modelsDir, file);
-          const stats = await fs.stat(fullPath);
+          try {
+            const stats = await fs.stat(fullPath);
+            
+            // Skip very small files (likely not real models)
+            if (stats.size < 1024 * 1024) { // Less than 1MB
+              continue;
+            }
 
-          models.push({
-            name: this.extractModelName(file),
-            path: fullPath,
-            size: stats.size,
-            format: this.getFileFormat(file),
-            provider: "local-file",
-          });
+            models.push({
+              name: this.extractModelName(file),
+              path: fullPath,
+              size: stats.size,
+              format: "GGUF",
+              provider: "local-file",
+            });
+          } catch (statError) {
+            // File might have been deleted, skip it
+            console.warn(`Could not stat file ${file}:`, statError);
+          }
         }
       }
-
+      
+      console.log(`Found ${models.length} GGUF models in ${this.modelsDir}`);
       return models;
     } catch (error) {
       console.error("Failed to scan models directory:", error);
@@ -56,23 +141,15 @@ export class ModelDirectoryScanner {
   }
 
   private isModelFile(filename: string): boolean {
-    const modelExtensions = [".gguf", ".ggml", ".bin"];
-    return modelExtensions.some((ext) => filename.toLowerCase().endsWith(ext));
-  }
-
-  private getFileFormat(filename: string): string {
-    const ext = path.extname(filename).toLowerCase();
-    if (ext === ".gguf") return "GGUF";
-    if (ext === ".ggml") return "GGML";
-    if (ext === ".bin") return "BIN";
-    return "UNKNOWN";
+    // Only GGUF files for GPU bridge compatibility
+    return filename.toLowerCase().endsWith('.gguf');
   }
 
   private extractModelName(filename: string): string {
     // Remove extension
-    const nameWithoutExt = filename.replace(/\.(gguf|ggml|bin)$/i, "");
+    const nameWithoutExt = filename.replace(/\.gguf$/i, "");
     
-    // Clean up common patterns
+    // Clean up common patterns but preserve model identifiers
     return nameWithoutExt
       .replace(/[-_]/g, " ")
       .replace(/\s+/g, " ")
@@ -84,16 +161,65 @@ export class ModelDirectoryScanner {
     const model = models.find((m) => m.name === modelName);
     return model?.path || null;
   }
+  
+  getModelsDir(): string {
+    return this.modelsDir;
+  }
 
-  async deleteModel(modelName: string): Promise<boolean> {
+  async hideModel(modelFilename: string): Promise<boolean> {
     try {
-      const modelPath = await this.getModelPath(modelName);
-      if (!modelPath) return false;
-
-      await fs.unlink(modelPath);
+      await this.loadManifest();
+      
+      // Add to hidden list if not already there
+      if (!this.manifest.hiddenModels.includes(modelFilename)) {
+        this.manifest.hiddenModels.push(modelFilename);
+        await this.saveManifest();
+      }
+      
+      console.log(`Hidden model: ${modelFilename}`);
       return true;
     } catch (error) {
-      console.error("Failed to delete model:", error);
+      console.error("Failed to hide model:", error);
+      return false;
+    }
+  }
+  
+  async unhideModel(modelFilename: string): Promise<boolean> {
+    try {
+      await this.loadManifest();
+      
+      // Remove from hidden list
+      const index = this.manifest.hiddenModels.indexOf(modelFilename);
+      if (index > -1) {
+        this.manifest.hiddenModels.splice(index, 1);
+        await this.saveManifest();
+      }
+      
+      console.log(`Unhidden model: ${modelFilename}`);
+      return true;
+    } catch (error) {
+      console.error("Failed to unhide model:", error);
+      return false;
+    }
+  }
+  
+  async getHiddenModels(): Promise<string[]> {
+    await this.loadManifest();
+    return this.manifest.hiddenModels;
+  }
+
+  // Legacy method - now just hides the model instead of deleting
+  async deleteModel(modelName: string): Promise<boolean> {
+    try {
+      const models = await this.scanModels();
+      const model = models.find((m) => m.name === modelName);
+      if (!model) return false;
+      
+      // Extract filename from path
+      const filename = path.basename(model.path);
+      return await this.hideModel(filename);
+    } catch (error) {
+      console.error("Failed to delete (hide) model:", error);
       return false;
     }
   }
