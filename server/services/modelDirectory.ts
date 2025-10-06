@@ -25,8 +25,9 @@ export class ModelDirectoryScanner {
   private manifest: ModelManifest = { hiddenModels: [] };
 
   constructor() {
-    // In Termux, use the Downloads folder via storage symlink
+    // Use the models folder where GPU Bridge can actually load from
     const homeDir = os.homedir();
+    const primaryModels = path.join(homeDir, 'PocketLLM', 'models');
     const termuxDownloads = path.join(homeDir, 'storage', 'downloads');
     const fallbackModels = path.resolve('./models');
     
@@ -34,7 +35,8 @@ export class ModelDirectoryScanner {
     const appDataDir = path.join(homeDir, '.pocketllm');
     this.manifestPath = path.join(appDataDir, 'model-manifest.json');
     
-    // Default to Downloads folder, will verify in init
+    // Default to models folder for GPU Bridge compatibility
+    // We'll still scan Downloads but copy to models folder
     this.modelsDir = termuxDownloads;
     
     // Initialize manifest directory

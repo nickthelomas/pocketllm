@@ -1033,7 +1033,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           path: fullPath,
           size: stats.size,
           format: "GGUF",
-          provider: "local-file"
+          provider: "local-file" as const
         });
       }
       
@@ -1058,10 +1058,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } else if (!existing.filename) {
           // Update filename if missing
           await storage.updateModel(existing.id, {
-            ...existing,
+            name: existing.name,
+            provider: existing.provider,
+            isAvailable: existing.isAvailable,
             filename: model.filename,
             parameters: {
-              ...existing.parameters,
+              ...(existing.parameters || {}),
               path: model.path
             }
           });
