@@ -1128,7 +1128,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         if (!existsInOllama) {
           // Import the GGUF file into Ollama
-          const modelPath = modelInfo.parameters?.path;
+          const modelPath = (modelInfo.parameters as any)?.path;
           if (!modelPath) {
             return res.status(400).json({ 
               error: "Model path not found in database. Please re-sync models." 
@@ -1241,8 +1241,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (mimetype === "application/pdf" || mimetype === "application/x-pdf" || 
           (mimetype === "application/octet-stream" && ext === ".pdf")) {
         // Parse PDF - pdf-parse only works with CommonJS so we use createRequire
-        const Module = await import('node:module');
-        const require = Module.createRequire(import.meta.url);
+        const module = await import('node:module');
+        const require = (module as any).createRequire(import.meta.url);
         const pdfParse = require("pdf-parse");
         const pdfData = await pdfParse(buffer);
         content = pdfData.text;
