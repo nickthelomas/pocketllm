@@ -991,18 +991,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/models/:name", async (req, res) => {
     try {
       const modelName = decodeURIComponent(req.params.name);
-      console.log(`🗑️ Hiding model: ${modelName}`);
+      console.log(`🗑️ Hide/unhide request for model: ${modelName}`);
       
-      // Find the model to get its filename
-      const models = await modelDirectoryScanner.scanModels();
-      const hiddenModels = await modelDirectoryScanner.getHiddenModels();
+      // Find the model (including hidden ones)
+      const modelInfo = await modelDirectoryScanner.findModelByName(modelName, true);
       
-      // Check if this is a currently visible model
-      const visibleModel = models.find(m => m.name === modelName);
-      if (visibleModel) {
+      if (!modelInfo) {
+        return res.status(404).json({ error: "Model not found" });
+      }
+      
+      if (modelInfo.isHidden) {
+        // Unhide it
+        await modelDirectoryScanner.unhideModel(modelInfo.filename);
+        console.log(`✓ Unhidden model: ${modelName}`);
+        
+        return res.json({ 
+          success: true, 
+          action: "unhidden",
+          message: `Model ${modelName} has been unhidden. Run refresh to see it.` 
+        });
+      } else {
         // Hide it
-        const filename = path.basename(visibleModel.path);
-        await modelDirectoryScanner.hideModel(filename);
+        await modelDirectoryScanner.hideModel(modelInfo.filename);
+        console.log(`✓ Hidden model: ${modelName}`);
         
         // Remove from database
         const dbModel = await storage.getModel(modelName);
@@ -1016,30 +1027,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           message: `Model ${modelName} has been hidden` 
         });
       }
-      
-      // Check if it's already hidden (for unhide functionality)
-      const modelsDir = modelDirectoryScanner.getModelsDir();
-      const allFiles = await fs.readdir(modelsDir);
-      const hiddenFile = allFiles.find(file => {
-        const name = file.replace(/\.gguf$/i, "").replace(/[-_]/g, " ").trim();
-        return name === modelName && hiddenModels.includes(file);
-      });
-      
-      if (hiddenFile) {
-        // Unhide it
-        await modelDirectoryScanner.unhideModel(hiddenFile);
-        return res.json({ 
-          success: true, 
-          action: "unhidden",
-          message: `Model ${modelName} has been unhidden. Run refresh to see it.` 
-        });
-      }
-      
-      res.status(404).json({ error: "Model not found" });
     } catch (error) {
       console.error("❌ Delete/hide error:", error);
       res.status(500).json({ 
-        error: error instanceof Error ? error.message : "Failed to hide model" 
+        error: error instanceof Error ? error.message : "Failed to hide/unhide model" 
       });
     }
   });

@@ -165,6 +165,95 @@ export class ModelDirectoryScanner {
   getModelsDir(): string {
     return this.modelsDir;
   }
+  
+  // Get all models including hidden ones (for unhide functionality)
+  async getAllModels(includeHidden: boolean = false): Promise<LocalModel[]> {
+    try {
+      // Ensure directory is accessible
+      const dirExists = await this.ensureModelsDirectory();
+      if (!dirExists) return [];
+      
+      const files = await fs.readdir(this.modelsDir);
+      const models: LocalModel[] = [];
+      
+      // Load manifest if we need to check hidden status
+      if (!includeHidden) {
+        await this.loadManifest();
+      }
+
+      for (const file of files) {
+        // Skip hidden models unless includeHidden is true
+        if (!includeHidden && this.manifest.hiddenModels.includes(file)) {
+          continue;
+        }
+        
+        // Only look for GGUF files
+        if (this.isModelFile(file)) {
+          const fullPath = path.join(this.modelsDir, file);
+          try {
+            const stats = await fs.stat(fullPath);
+            
+            // Skip very small files
+            if (stats.size < 1024 * 1024) {
+              continue;
+            }
+
+            models.push({
+              name: this.extractModelName(file),
+              path: fullPath,
+              size: stats.size,
+              format: "GGUF",
+              provider: "local-file",
+            });
+          } catch (statError) {
+            console.warn(`Could not stat file ${file}:`, statError);
+          }
+        }
+      }
+      
+      return models;
+    } catch (error) {
+      console.error("Failed to get all models:", error);
+      return [];
+    }
+  }
+  
+  // Find a model by name (including hidden ones)
+  async findModelByName(modelName: string, includeHidden: boolean = true): Promise<{ filename: string; path: string; isHidden: boolean } | null> {
+    try {
+      await this.loadManifest();
+      
+      // Get all files in directory
+      const dirExists = await this.ensureModelsDirectory();
+      if (!dirExists) return null;
+      
+      const files = await fs.readdir(this.modelsDir);
+      
+      // Look for a file matching the model name
+      for (const file of files) {
+        if (!this.isModelFile(file)) continue;
+        
+        const extractedName = this.extractModelName(file);
+        if (extractedName === modelName) {
+          const isHidden = this.manifest.hiddenModels.includes(file);
+          
+          // If not including hidden and this is hidden, skip
+          if (!includeHidden && isHidden) continue;
+          
+          return {
+            filename: file,
+            path: path.join(this.modelsDir, file),
+            isHidden
+          };
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      console.error("Failed to find model by name:", error);
+      return null;
+    }
+  }
 
   async hideModel(modelFilename: string): Promise<boolean> {
     try {
