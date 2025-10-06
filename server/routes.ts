@@ -601,8 +601,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Local Ollama (default)
           const ollama = await getOllamaService();
           
+          // For local-file models with GPU Bridge, use the actual filename
+          let modelToUse = modelName;
+          if (provider === 'local-file' && modelInfo?.filename) {
+            // GPU Bridge needs the actual filename, not the cleaned display name
+            modelToUse = modelInfo.filename;
+            console.log(`🎯 Using filename for GPU Bridge: ${modelToUse} (display: ${modelName})`);
+          }
+          
           for await (const chunk of ollama.generateStream({
-            model: modelName,
+            model: modelToUse,
             prompt: message,
             system: hierarchicalContext.fullContext || undefined,
             temperature: settings?.temperature ?? 0.7,
@@ -759,17 +767,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!existing) {
           await storage.createModel({
             name: localModel.name,
+            filename: localModel.filename,  // Store actual filename for GPU Bridge
             provider: "local-file",
             isAvailable: true,
             parameters: { path: localModel.path },
           });
           console.log(`✅ Added local-file model: ${localModel.name}`);
         } else if (existing.provider === "local-file") {
-          // Backfill path for existing local-file models that may be missing it
+          // Backfill path and filename for existing local-file models that may be missing them
           const params = (existing.parameters as any) ?? {};
-          if (!params.path) {
-            console.log(`🔧 Backfilling path for local-file model: ${localModel.name}`);
+          if (!params.path || !existing.filename) {
+            console.log(`🔧 Backfilling path/filename for local-file model: ${localModel.name}`);
             await storage.updateModel(existing.id, {
+              filename: localModel.filename,  // Update filename if missing
               parameters: { ...params, path: localModel.path }
             });
           }
@@ -962,6 +972,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!existing) {
           await storage.createModel({
             name: localModel.name,
+            filename: localModel.filename,  // Store actual filename for GPU Bridge
             provider: localModel.provider,
             isAvailable: true,
             parameters: {

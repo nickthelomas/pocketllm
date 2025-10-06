@@ -58,6 +58,7 @@ export const ragChunks = pgTable("rag_chunks", {
 export const models = pgTable("models", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull().unique(),
+  filename: text("filename"), // Actual filename for GGUF models (used by GPU Bridge)
   provider: text("provider").notNull(), // "ollama" | "huggingface" | "local-file" | "openrouter" | "remote-ollama"
   isAvailable: boolean("is_available").default(true).notNull(),
   parameters: jsonb("parameters"), // Default parameters for this model
@@ -122,6 +123,7 @@ export const insertModelSchema = createInsertSchema(models).omit({
 }).extend({
   provider: z.enum(["ollama", "local-file", "huggingface", "openrouter", "remote-ollama"]),
   isAvailable: z.boolean().default(true),
+  filename: z.string().optional(), // Optional - only for GGUF models
 });
 
 export const insertSettingsSchema = createInsertSchema(settings).omit({

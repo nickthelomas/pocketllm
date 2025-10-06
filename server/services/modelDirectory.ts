@@ -7,6 +7,7 @@ import os from "os";
 
 interface LocalModel {
   name: string;
+  filename: string;  // Actual filename for GPU Bridge
   path: string;
   size: number;
   format: string;
@@ -120,6 +121,7 @@ export class ModelDirectoryScanner {
 
             models.push({
               name: this.extractModelName(file),
+              filename: file,  // Keep original filename for GPU Bridge
               path: fullPath,
               size: stats.size,
               format: "GGUF",
@@ -200,6 +202,7 @@ export class ModelDirectoryScanner {
 
             models.push({
               name: this.extractModelName(file),
+              filename: file,  // Keep original filename for GPU Bridge
               path: fullPath,
               size: stats.size,
               format: "GGUF",
