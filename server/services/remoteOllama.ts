@@ -233,16 +233,43 @@ export class RemoteOllamaService {
     }
   }
 
+  // Format prompt for Phi3 models which require special template
+  private formatPhi3Prompt(prompt: string, system?: string): string {
+    let formattedPrompt = '';
+    
+    if (system) {
+      formattedPrompt += `<|system|>\n${system}<|end|>\n`;
+    }
+    
+    formattedPrompt += `<|user|>\n${prompt}<|end|>\n<|assistant|>\n`;
+    
+    return formattedPrompt;
+  }
+
   async *generateStream(request: OllamaGenerateRequest): AsyncGenerator<OllamaGenerateChunk> {
     if (!this.baseUrl) {
       throw new Error('Remote Ollama URL not configured');
     }
 
     try {
+      // Check if this is a Phi3 model and format prompt accordingly
+      const isPhi3 = request.model.toLowerCase().includes('phi3') || 
+                     request.model.toLowerCase().includes('phi-3');
+      
+      let finalRequest = { ...request };
+      
+      if (isPhi3 && request.prompt) {
+        // For Phi3 models, combine system and user prompt into the special format
+        finalRequest.prompt = this.formatPhi3Prompt(request.prompt, request.system);
+        // Remove system field as it's now part of the prompt
+        delete finalRequest.system;
+        console.log(`🎯 Using Phi3 prompt template for remote model: ${request.model}`);
+      }
+      
       const response = await fetch(`${this.baseUrl}/api/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...request, stream: true }),
+        body: JSON.stringify({ ...finalRequest, stream: true }),
       });
 
       if (!response.ok) {
