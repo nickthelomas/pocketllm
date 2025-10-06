@@ -334,8 +334,14 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
           onModelChange(value);
         }
       } catch (error) {
-        // If API fails, allow selection (fail open)
-        onModelChange(value);
+        // If API fails, fail closed - prevent selection for security
+        console.error("Failed to check password protection status:", error);
+        toast({
+          title: "Security Check Failed",
+          description: "Unable to verify access permissions. Please try again.",
+          variant: "destructive"
+        });
+        return; // Block selection if we can't verify
       }
     } else {
       onModelChange(value);

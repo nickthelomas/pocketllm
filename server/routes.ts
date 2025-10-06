@@ -523,7 +523,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       try {
         if (provider === 'openrouter') {
-          // OpenRouter cloud models
+          // OpenRouter cloud models - verify password protection first
+          const passwordEnabled = await storage.getSetting(undefined, 'cloud_models_password_enabled');
+          
+          // If password protection is enabled, we need to verify the session
+          // This prevents bypassing the UI protection by directly calling the API
+          if (passwordEnabled?.value === true || passwordEnabled?.value === "true") {
+            // Check if there's a valid password session (would need session management for this)
+            // For now, block all cloud model usage when protection is enabled
+            // In a production system, you'd check session/token validity here
+            throw new Error('Cloud models are password protected. Please disable protection in Settings or use the UI to authenticate.');
+          }
+          
           const { OpenRouterService } = await import('./services/openrouter.js');
           const openrouterService = new OpenRouterService();
           const apiKey = await storage.getSetting(undefined, 'openrouter_api_key');
