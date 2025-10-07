@@ -79,44 +79,53 @@ termux-wake-lock
 # Clear old PID file
 rm -f "$PID_FILE"
 
-# Check if already running
-if pgrep -f "ollama serve" > /dev/null; then
-    warn "Ollama already running, skipping..."
-else
-    log "Starting Ollama server..."
-    cd "$SCRIPT_DIR"
-    
-    # Check for GPU configuration and use it if available
-    if [ -f "$HOME/.ollama/environment" ]; then
-        log "Found GPU configuration, loading..."
-        source "$HOME/.ollama/environment"
-        export $(grep -v '^#' $HOME/.ollama/environment | xargs)
-        echo "GPU acceleration enabled with following settings:" >> "$OLLAMA_LOG"
-        grep -v '^#' $HOME/.ollama/environment >> "$OLLAMA_LOG"
+# Check if Ollama is installed
+if command -v ollama &> /dev/null; then
+    # Check if already running
+    if pgrep -f "ollama serve" > /dev/null; then
+        warn "Ollama already running, skipping..."
     else
-        log "No GPU configuration found, using CPU mode"
+        log "Starting Ollama server..."
+        cd "$SCRIPT_DIR"
+        
+        # Check for GPU configuration and use it if available
+        if [ -f "$HOME/.ollama/environment" ]; then
+            log "Found GPU configuration, loading..."
+            source "$HOME/.ollama/environment"
+            export $(grep -v '^#' $HOME/.ollama/environment | xargs)
+            echo "GPU acceleration enabled with following settings:" >> "$OLLAMA_LOG"
+            grep -v '^#' $HOME/.ollama/environment >> "$OLLAMA_LOG"
+        else
+            log "No GPU configuration found, using CPU mode"
+        fi
+        
+        ollama serve > "$OLLAMA_LOG" 2>&1 &
+        OLLAMA_PID=$!
+        echo "$OLLAMA_PID" >> "$PID_FILE"
+        log "Ollama PID: $OLLAMA_PID"
+        
+        # Wait for Ollama to be ready
+        sleep 5
+        if check_health "Ollama" "http://127.0.0.1:11434/api/tags"; then
+            log "✅ Ollama server started successfully"
+        else
+            error "❌ Ollama failed to start, check $OLLAMA_LOG"
+            exit 1
+        fi
     fi
-    
-    ollama serve > "$OLLAMA_LOG" 2>&1 &
-    OLLAMA_PID=$!
-    echo "$OLLAMA_PID" >> "$PID_FILE"
-    log "Ollama PID: $OLLAMA_PID"
-    
-    # Wait for Ollama to be ready
-    sleep 5
-    if check_health "Ollama" "http://127.0.0.1:11434/api/tags"; then
-        log "✅ Ollama server started successfully"
-    else
-        error "❌ Ollama failed to start, check $OLLAMA_LOG"
-        exit 1
-    fi
-fi
 
-# Ensure default model is available
-log "Checking for default model..."
-if ! ollama list | grep -q "llama3.2:1b"; then
-    warn "Default model not found, pulling llama3.2:1b..."
-    ollama pull llama3.2:1b || warn "Model pull failed, continuing..."
+    # Ensure default model is available
+    log "Checking for default model..."
+    if ! ollama list | grep -q "llama3.2:1b"; then
+        warn "Default model not found, pulling llama3.2:1b..."
+        ollama pull llama3.2:1b || warn "Model pull failed, continuing..."
+    fi
+else
+    warn "⚠ Ollama not installed. For non-rooted devices:"
+    warn "  Use GPU mode instead: bash termux-start-gpu.sh"
+    warn "  Setup GPU acceleration: bash scripts/termux-gpu-setup.sh"
+    warn ""
+    warn "Continuing without LLM backend..."
 fi
 
 # Check if backend already running
