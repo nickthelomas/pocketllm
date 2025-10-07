@@ -80,7 +80,7 @@ stop_services() {
     pkill -f "ollama serve" 2>/dev/null && echo "  - Stopped Ollama"
     
     # Stop GPU bridge
-    pkill -f "ollama-gpu-bridge.py" 2>/dev/null && echo "  - Stopped GPU bridge"
+    pkill -f "ollama-gpu-bridge-v2.py" 2>/dev/null && echo "  - Stopped GPU bridge"
     
     # Stop backend
     pkill -f "npm run dev" 2>/dev/null && echo "  - Stopped backend"
@@ -186,7 +186,7 @@ monitor_services() {
     
     while true; do
         # Check if services are running
-        if ! pgrep -f "ollama-gpu-bridge.py" > /dev/null; then
+        if ! pgrep -f "ollama-gpu-bridge-v2.py" > /dev/null; then
             echo -e "\n${RED}GPU Bridge stopped! Restarting...${NC}"
             start_gpu_bridge
         fi
