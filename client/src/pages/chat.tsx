@@ -157,7 +157,7 @@ export default function Chat() {
           {/* Left Sidebar - Responsive */}
           <Sidebar 
             side="left" 
-            collapsible={isTablet ? "icon" : "offcanvas"}
+            collapsible="offcanvas"
           >
             <SidebarContent className="flex flex-col h-full">
               <div className="p-4 border-b border-border">
