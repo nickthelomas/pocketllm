@@ -101,6 +101,16 @@ export default function Chat() {
               <h1 className="text-lg md:text-xl font-semibold text-foreground">Pocket LLM</h1>
             </div>
             
+            {/* Model Selector on Tablets */}
+            {isTablet && (
+              <div className="ml-4">
+                <ModelSelector 
+                  selectedModel={selectedModel}
+                  onModelChange={(model) => setSelectedModel(model || '')}
+                />
+              </div>
+            )}
+            
             {/* Server Status Badge - Hidden on very small screens */}
             <Badge 
               variant="secondary" 
@@ -160,12 +170,14 @@ export default function Chat() {
             collapsible={isTablet ? "icon" : "offcanvas"}
           >
             <SidebarContent className="flex flex-col h-full">
-              <div className="p-4 border-b border-border">
-                <ModelSelector 
-                  selectedModel={selectedModel}
-                  onModelChange={setSelectedModel}
-                />
-              </div>
+              {!isTablet && (
+                <div className="p-4 border-b border-border">
+                  <ModelSelector 
+                    selectedModel={selectedModel}
+                    onModelChange={(model) => setSelectedModel(model || '')}
+                  />
+                </div>
+              )}
               
               <div className="flex-1 flex flex-col overflow-hidden">
                 <ConversationList 
