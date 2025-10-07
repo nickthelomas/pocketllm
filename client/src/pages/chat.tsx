@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarTrigger } from "@/components/ui/sidebar";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { useDevice } from "@/hooks/use-device";
 import { 
   Settings, 
   Upload,
@@ -28,7 +28,7 @@ export default function Chat() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isHealthViewerOpen, setIsHealthViewerOpen] = useState(false);
   const [isMobileRAGOpen, setIsMobileRAGOpen] = useState(false);
-  const isMobile = useIsMobile();
+  const { deviceType, isMobile, isTablet, isMobileOrTablet } = useDevice();
 
   // Health check
   const { data: health } = useQuery({
@@ -86,13 +86,13 @@ export default function Chat() {
   const totalChunks = ragDocuments?.reduce((sum, doc) => sum + doc.chunksCount, 0) || 0;
 
   return (
-    <SidebarProvider defaultOpen={true}>
+    <SidebarProvider defaultOpen={!isTablet}>
       <div className="h-screen flex flex-col bg-background text-foreground w-full">
         {/* Top Navigation Bar */}
         <header className="bg-card border-b border-border px-4 py-3 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2 md:gap-4">
-            {/* Mobile Menu Trigger */}
-            <SidebarTrigger className="md:hidden" data-testid="button-mobile-menu" />
+            {/* Mobile/Tablet Menu Trigger */}
+            <SidebarTrigger className="lg:hidden" data-testid="button-mobile-menu" />
             
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
@@ -111,17 +111,21 @@ export default function Chat() {
               {health ? 'Server Online' : 'Server Offline'}
             </Badge>
             
-            {/* RAG Status Badge - Hidden on mobile */}
+            {/* RAG Status Badge - Hidden on mobile, shown on tablet/desktop */}
             {!isMobile && (
-              <Badge variant="secondary" className="bg-primary/10 border-primary/30 text-primary" data-testid="rag-status-badge">
+              <Badge 
+                variant="secondary" 
+                className="bg-primary/10 border-primary/30 text-primary" 
+                data-testid="rag-status-badge"
+              >
                 {ragDocuments?.length || 0} docs / {totalChunks} chunks
               </Badge>
             )}
           </div>
           
           <div className="flex items-center gap-2 md:gap-3">
-            {/* Mobile RAG Panel Trigger */}
-            {isMobile && (
+            {/* Mobile/Tablet RAG Panel Trigger */}
+            {isMobileOrTablet && (
               <Button 
                 variant="ghost" 
                 size="sm" 
@@ -129,6 +133,7 @@ export default function Chat() {
                 data-testid="button-mobile-rag"
               >
                 <FileStack className="w-4 h-4" />
+                {isTablet && <span className="ml-1">RAG</span>}
               </Button>
             )}
             <ThemeToggle />
@@ -150,7 +155,10 @@ export default function Chat() {
         {/* Main Content Area */}
         <div className="flex-1 flex overflow-hidden">
           {/* Left Sidebar - Responsive */}
-          <Sidebar side="left" collapsible="offcanvas">
+          <Sidebar 
+            side="left" 
+            collapsible={isTablet ? "icon" : "offcanvas"}
+          >
             <SidebarContent className="flex flex-col h-full">
               <div className="p-4 border-b border-border">
                 <ModelSelector 
@@ -177,8 +185,8 @@ export default function Chat() {
             />
           </main>
 
-          {/* Right Sidebar - RAG Panel - Hidden on mobile */}
-          {!isMobile && <RAGPanel />}
+          {/* Right Sidebar - RAG Panel - Only shown on desktop */}
+          {deviceType === "desktop" && <RAGPanel />}
         </div>
 
         {/* Settings Modal */}
@@ -193,12 +201,12 @@ export default function Chat() {
           onOpenChange={setIsHealthViewerOpen}
         />
 
-        {/* Mobile RAG Panel Sheet */}
-        {isMobile && (
+        {/* Mobile/Tablet RAG Panel Sheet */}
+        {isMobileOrTablet && (
           <Sheet open={isMobileRAGOpen} onOpenChange={setIsMobileRAGOpen}>
             <SheetContent 
               side="right" 
-              className="w-[90%] sm:w-[400px] p-0"
+              className={`${isMobile ? 'w-[90%]' : 'w-[400px]'} p-0`}
               data-testid="sheet-mobile-rag"
             >
               <SheetHeader className="sr-only">
