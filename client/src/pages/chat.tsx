@@ -86,13 +86,13 @@ export default function Chat() {
   const totalChunks = ragDocuments?.reduce((sum, doc) => sum + doc.chunksCount, 0) || 0;
 
   return (
-    <SidebarProvider defaultOpen={!isTablet}>
+    <SidebarProvider defaultOpen={!isMobileOrTablet}>
       <div className="h-screen flex flex-col bg-background text-foreground w-full">
         {/* Top Navigation Bar */}
         <header className="bg-card border-b border-border px-4 py-3 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2 md:gap-4">
             {/* Mobile/Tablet Menu Trigger */}
-            <SidebarTrigger className="lg:hidden" data-testid="button-mobile-menu" />
+            <SidebarTrigger className="xl:hidden" data-testid="button-mobile-menu" />
             
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
@@ -100,16 +100,6 @@ export default function Chat() {
               </div>
               <h1 className="text-lg md:text-xl font-semibold text-foreground">Pocket LLM</h1>
             </div>
-            
-            {/* Model Selector on Tablets */}
-            {isTablet && (
-              <div className="ml-4">
-                <ModelSelector 
-                  selectedModel={selectedModel}
-                  onModelChange={(model) => setSelectedModel(model || '')}
-                />
-              </div>
-            )}
             
             {/* Server Status Badge - Hidden on very small screens */}
             <Badge 
@@ -170,14 +160,12 @@ export default function Chat() {
             collapsible={isTablet ? "icon" : "offcanvas"}
           >
             <SidebarContent className="flex flex-col h-full">
-              {!isTablet && (
-                <div className="p-4 border-b border-border">
-                  <ModelSelector 
-                    selectedModel={selectedModel}
-                    onModelChange={(model) => setSelectedModel(model || '')}
-                  />
-                </div>
-              )}
+              <div className="p-4 border-b border-border">
+                <ModelSelector 
+                  selectedModel={selectedModel}
+                  onModelChange={(model) => setSelectedModel(model || '')}
+                />
+              </div>
               
               <div className="flex-1 flex flex-col overflow-hidden">
                 <ConversationList 
